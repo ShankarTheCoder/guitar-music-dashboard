@@ -60,6 +60,9 @@ export default function Page() {
   const [search, setSearch] = useState('')
   const [metronome, setMetronome] = useState(false)
   const [youtubeSearch, setYoutubeSearch] = useState('')
+  const [youtubeResults, setYoutubeResults] = useState<{ id: string; title: string; channel: string; thumbnail: string }[]>([])
+  const [youtubeLoading, setYoutubeLoading] = useState(false)
+  const [youtubeError, setYoutubeError] = useState('')
   const [customSong, setCustomSong] = useState<{ title: string; artist: string; time: string; tone: string; video: string } | null>(null)
   const [bpm, setBpm] = useState(90)
   const [activeString, setActiveString] = useState(5)
@@ -95,6 +98,30 @@ export default function Page() {
       oscillator.start()
       oscillator.stop(context.currentTime + 1.12)
     } catch { /* Audio is optional when the browser blocks initialization. */ }
+  }
+
+  async function searchYouTube(event: React.FormEvent) {
+    event.preventDefault()
+    const query = youtubeSearch.trim()
+    if (!query) return
+    setYoutubeLoading(true)
+    setYoutubeError('')
+    try {
+      const response = await fetch(`/api/youtube/search?q=${encodeURIComponent(query)}`)
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error ?? 'YouTube search failed.')
+      setYoutubeResults(data.items.map((item: { id: { videoId: string }; snippet: { title: string; channelTitle: string; thumbnails?: { medium?: { url: string } } } }) => ({ id: item.id.videoId, title: item.snippet.title, channel: item.snippet.channelTitle, thumbnail: item.snippet.thumbnails?.medium?.url ?? '' })))
+    } catch (error) {
+      setYoutubeError(error instanceof Error ? error.message : 'YouTube search failed.')
+      setYoutubeResults([])
+    } finally {
+      setYoutubeLoading(false)
+    }
+  }
+
+  function playYouTubeResult(result: { id: string; title: string; channel: string }) {
+    setCustomSong({ title: result.title, artist: result.channel, time: 'YouTube', tone: 'indigo', video: `https://www.youtube.com/embed/${result.id}` })
+    setPlaying(true)
   }
 
   function toggleMetronome() {
@@ -136,7 +163,7 @@ export default function Page() {
               <section className="panel fretboard-panel"><div className="panel-heading compact"><div><span className="section-kicker">GUITAR LAB</span><h2>Play along</h2></div><div className="instrument-selector"><Waves size={15} /><select value={tone} onChange={(event) => setTone(event.target.value)} aria-label="Guitar sound">{['Acoustic', 'Clean Electric', 'Overdrive', 'Bass'].map((value) => <option key={value}>{value}</option>)}</select><ChevronDown size={14} /></div></div><div className="fretboard-wrap"><div className="fret-labels"><span /><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span></div><div className="fretboard"><div className="nut" />{strings.map((string, stringIndex) => <div className="string-row" key={string.name}><span className="string-name">{string.name}</span><div className="string-line" style={{ height: `${1 + stringIndex * 0.35}px` }} />{Array.from({ length: 13 }).map((_, fret) => <button key={fret} className={`fret-cell ${activeString === stringIndex && activeFret === fret ? 'selected' : ''}`} onClick={() => playNote(stringIndex, fret)} aria-label={`${string.name} string, fret ${fret}`}>{activeString === stringIndex && activeFret === fret ? <span className="note-label">{fretNotes[(fret + stringIndex * 2) % fretNotes.length]}</span> : null}</button>)}</div>)}</div><div className="fretboard-footer"><span className="hint-text">Click a fret to play</span><span className="detected-note">Last note <strong>{fretNotes[(activeFret + activeString * 2) % fretNotes.length]}{strings[activeString].octave + Math.floor(activeFret / 12)}</strong></span></div></div></section>
             </div>
 
-            <aside className="right-column"><section className="panel search-panel"><div className="panel-heading compact"><div><span className="section-kicker">DISCOVER</span><h2>Find your next song</h2></div><button className="filter-button" aria-label="Filter search"><SlidersHorizontal size={17} /></button></div><form className="search-input" onSubmit={(event) => { event.preventDefault(); const query = youtubeSearch.trim(); if (query) setCustomSong({ title: query, artist: 'YouTube search', time: 'Live', tone: 'indigo', video: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query)}` }) }}><Search size={17} /><input value={youtubeSearch} onChange={(event) => { setYoutubeSearch(event.target.value); setSearch(event.target.value) }} placeholder="Search any song on YouTube" aria-label="Search any song on YouTube" /><button className="youtube-search-button" type="submit" disabled={!youtubeSearch.trim()}>Play here</button></form><div className="result-list">{filteredSongs.map((song, index) => <button className={`result-item ${index === selectedSong ? 'selected' : ''}`} key={song.title} onClick={() => setSelectedSong(index)}><span className={`result-art ${song.tone}`}><Disc3 size={20} /><span>{index + 1}</span></span><span className="result-copy"><strong>{song.title}</strong><small>{song.artist}</small></span><span className="result-time">{song.time}</span><Play size={14} className="result-play" fill="currentColor" /></button>)}{filteredSongs.length === 0 && <div className="empty-search"><Search size={20} /><span>No songs found in your library</span></div>}</div><button className="browse-button">Browse all songs <ChevronRight size={15} /></button></section>
+            <aside className="right-column"><section className="panel search-panel"><div className="panel-heading compact"><div><span className="section-kicker">DISCOVER</span><h2>Find your next song</h2></div><button className="filter-button" aria-label="Filter search"><SlidersHorizontal size={17} /></button></div><form className="search-input" onSubmit={searchYouTube}><Search size={17} /><input value={youtubeSearch} onChange={(event) => setYoutubeSearch(event.target.value)} placeholder="Search any song on YouTube" aria-label="Search any song on YouTube" /><button className="youtube-search-button" type="submit" disabled={youtubeLoading || !youtubeSearch.trim()}>{youtubeLoading ? 'Searching…' : 'Search'}</button></form>{youtubeError && <p className="search-error" role="alert">{youtubeError}</p>}<div className="result-list">{youtubeResults.length > 0 ? youtubeResults.map((result) => <button className="result-item" key={result.id} onClick={() => playYouTubeResult(result)}><span className="result-art indigo">{result.thumbnail ? <img src={result.thumbnail} alt="" /> : <Disc3 size={20} />}<Play size={14} fill="currentColor" /></span><span className="result-copy"><strong>{result.title}</strong><small>{result.channel}</small></span><span className="result-time">YouTube</span></button>) : filteredSongs.map((song, index) => <button className={`result-item ${index === selectedSong ? 'selected' : ''}`} key={song.title} onClick={() => { setSelectedSong(index); setCustomSong(null) }}><span className={`result-art ${song.tone}`}><Disc3 size={20} /><span>{index + 1}</span></span><span className="result-copy"><strong>{song.title}</strong><small>{song.artist}</small></span><span className="result-time">{song.time}</span><Play size={14} className="result-play" fill="currentColor" /></button>)}</div><button className="browse-button" type="button">Search YouTube to find more songs <ChevronRight size={15} /></button></section>
               <section className="panel chord-panel"><div className="panel-heading compact"><div><span className="section-kicker">CHORD PROGRESSION</span><h2>Blackbird <span className="muted-separator">•</span> Verse</h2></div><button className="more-button" aria-label="Chord options"><MoreHorizontal size={19} /></button></div><div className="current-chord"><div><span>PLAYING NOW</span><strong>G</strong></div><div className="chord-diagram"><div className="diagram-frets">{[0, 1, 2, 3, 4].map((fret) => <div className="diagram-row" key={fret}>{[0, 1, 2, 3, 4, 5].map((string) => <i key={string} className={fret === 1 && [1, 2, 4].includes(string) ? 'finger' : ''} />)}</div>)}</div><div className="diagram-names"><span>E</span><span>A</span><span>D</span><span>G</span><span>B</span><span>e</span></div></div></div><div className="chord-list">{chords.slice(0, 5).map((chord, index) => <button className={index === 0 ? 'active' : ''} key={chord}><span>{chord}</span>{index < 4 ? <ChevronRight size={14} /> : null}</button>)}</div></section>
               <section className="panel mic-panel"><div className="mic-copy"><div className="mic-icon"><Mic2 size={19} /></div><div><span className="section-kicker">REAL-TIME MODE</span><h2>Play real guitar</h2><p>Use your mic to see your pitch.</p></div></div><button className="outline-button"><Mic2 size={15} /> Enable mic</button></section>
             </aside>
