@@ -53,8 +53,17 @@ export async function GET(request: Request) {
     currentPageToken = lastPageToken
   }
 
+  function formatDuration(totalSeconds: number) {
+    const hours = Math.floor(totalSeconds / 3600)
+    const minutes = Math.floor((totalSeconds % 3600) / 60)
+    const seconds = totalSeconds % 60
+    return hours > 0
+      ? `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+      : `${minutes}:${String(seconds).padStart(2, '0')}`
+  }
+
   return NextResponse.json({
-    items: collected.map(({ item }) => ({ ...item, videoType: 'Long video' })),
+    items: collected.map(({ item, duration }) => ({ ...item, duration: formatDuration(duration) })),
     nextPageToken: lastPageToken,
   })
 }

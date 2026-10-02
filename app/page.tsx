@@ -1,9 +1,9 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { LoaderCircle, Mic, Music2, Pause, Play, Search, Truck, X } from 'lucide-react'
+import { LoaderCircle, Mic, Music2, Play, Search, Truck, X } from 'lucide-react'
 
-type Result = { id: string; title: string; channel: string; thumbnail: string; videoType: 'Short' | 'Long video' | 'Video' }
+type Result = { id: string; title: string; channel: string; thumbnail: string; duration: string }
 
 export default function Page() {
   const [query, setQuery] = useState('')
@@ -15,8 +15,10 @@ export default function Page() {
   const [playing, setPlaying] = useState(false)
   const [truckPlaying, setTruckPlaying] = useState(false)
   const [listening, setListening] = useState(false)
+  const [voiceSupported, setVoiceSupported] = useState(true)
   const recognitionRef = useRef<{ start: () => void; stop: () => void; lang: string; interimResults: boolean; continuous: boolean; onresult: ((event: { results: { [index: number]: { [index: number]: { transcript: string } } } }) => void) | null; onend: (() => void) | null; onerror: ((event: { error?: string }) => void) | null } | null>(null)
   const videoRef = useRef<HTMLIFrameElement>(null)
+  const displayRef = useRef<HTMLElement>(null)
   const resultsRef = useRef<Result[]>([])
   const selectedRef = useRef<Result | null>(null)
   const truckNodesRef = useRef<{ source: AudioScheduledSourceNode; gain: GainNode }[]>([])
@@ -39,10 +41,16 @@ export default function Page() {
       webkitSpeechRecognition?: new () => BrowserSpeechRecognition
     }
     const SpeechRecognitionClass = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition
-    if (!SpeechRecognitionClass) {
-      setError('Voice search needs Chrome or Edge. You can still type a song title.')
+    if (!window.isSecureContext) {
+      setError('Voice search requires HTTPS. Open the deployed HTTPS address and allow microphone access.')
       return
     }
+    if (!SpeechRecognitionClass) {
+      setVoiceSupported(false)
+      setError('Voice search is supported in Chrome, Edge, and Safari. Firefox does not provide speech recognition yet; type your song title instead.')
+      return
+    }
+    setVoiceSupported(true)
 
     // Stop an old session before creating a new one. This avoids the
     // "recognition has already started" error after a cancelled search.
@@ -123,12 +131,12 @@ export default function Page() {
       const response = await fetch(`/api/youtube/search?q=${encodeURIComponent(value)}`)
       const data = await response.json()
       if (!response.ok) throw new Error(data.error ?? 'Search failed')
-      const videos = data.items.map((item: { id: { videoId: string }; videoType?: Result['videoType']; snippet: { title: string; channelTitle: string; thumbnails?: { medium?: { url: string } } } }) => ({
+      const videos = data.items.map((item: { id: { videoId: string }; duration?: string; snippet: { title: string; channelTitle: string; thumbnails?: { medium?: { url: string } } } }) => ({
         id: item.id.videoId,
         title: item.snippet.title,
         channel: item.snippet.channelTitle,
         thumbnail: item.snippet.thumbnails?.medium?.url ?? '',
-        videoType: item.videoType ?? 'Video',
+        duration: item.duration ?? '—',
       }))
       setResults(videos)
       resultsRef.current = videos
@@ -149,7 +157,7 @@ export default function Page() {
       const response = await fetch(`/api/youtube/search?q=${encodeURIComponent(query.trim())}&pageToken=${encodeURIComponent(nextPageToken)}`)
       const data = await response.json()
       if (!response.ok) throw new Error(data.error ?? 'Could not load more videos')
-      const videos: Result[] = data.items.map((item: { id: { videoId: string }; videoType?: Result['videoType']; snippet: { title: string; channelTitle: string; thumbnails?: { medium?: { url: string } } } }) => ({
+      const videos: Result[] = data.items.map((item: { id: { videoId: string }; duration?: string; snippet: { title: string; channelTitle: string; thumbnails?: { medium?: { url: string } } } }) => ({
         id: item.id.videoId,
         title: item.snippet.title,
         channel: item.snippet.channelTitle,
@@ -227,19 +235,32 @@ export default function Page() {
     setTruckPlaying(true)
   }
 
-  function togglePlayback() {
-    const next = !playing
-    setPlaying(next)
-    videoRef.current?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: next ? 'playVideo' : 'pauseVideo', args: [] }), '*')
+  function sendPlayerCommand(func: 'playVideo' | 'pauseVideo') {
+    const player = videoRef.current?.contentWindow
+    if (!player) return
+    const message = JSON.stringify({ event: 'command', func, args: [] })
+    player.postMessage(message, 'https://www.youtube.com')
+    player.postMessage(message, 'https://www.youtube-nocookie.com')
   }
 
   function startVideoPlayback() {
     if (!playing) setPlaying(true)
     const player = videoRef.current?.contentWindow
-    player?.postMessage(JSON.stringify({ event: 'listening', id: '1', channel: 'channel' }), '*')
-    player?.postMessage(JSON.stringify({ event: 'command', func: 'addEventListener', args: ['onStateChange'] }), '*')
-    player?.postMessage(JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*')
+    if (!player) return
+    const setup = JSON.stringify({ event: 'listening', id: '1', channel: 'channel' })
+    const listener = JSON.stringify({ event: 'command', func: 'addEventListener', args: ['onStateChange'] })
+    player.postMessage(setup, 'https://www.youtube.com')
+    player.postMessage(listener, 'https://www.youtube.com')
+    player.postMessage(setup, 'https://www.youtube-nocookie.com')
+    player.postMessage(listener, 'https://www.youtube-nocookie.com')
+    window.setTimeout(() => sendPlayerCommand('playVideo'), 150)
+    window.setTimeout(() => sendPlayerCommand('playVideo'), 600)
   }
+
+  useEffect(() => {
+    if (!selected) return
+    displayRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [selected])
 
   useEffect(() => {
     const handleYouTubeMessage = (event: MessageEvent) => {
@@ -280,7 +301,7 @@ export default function Page() {
             <Search size={20} aria-hidden="true" />
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search any song on YouTube" aria-label="Search any song on YouTube" />
             {query.trim() && <button className="search-action search-clear" type="button" onClick={clearSearch} aria-label="Clear search" title="Clear search"><X size={18} /></button>}
-            <button className={`search-action search-voice ${listening ? 'is-listening' : ''}`} type="button" onClick={toggleVoiceSearch} aria-label={listening ? 'Stop voice search' : 'Search by voice'} aria-pressed={listening} title={listening ? 'Stop voice search' : 'Search by voice'}><Mic size={18} /></button>
+            <button className={`search-action search-voice ${listening ? 'is-listening' : ''}`} type="button" onClick={toggleVoiceSearch} aria-label={listening ? 'Stop voice search' : voiceSupported ? 'Search by voice' : 'Voice search is unavailable in this browser'} aria-pressed={listening} title={listening ? 'Stop voice search' : voiceSupported ? 'Search by voice' : 'Voice search works in Chrome, Edge, and Safari'}><Mic size={18} /></button>
             <button className="search-submit" type="submit" disabled={loading || !query.trim()}>{loading ? <LoaderCircle size={18} className="spin" /> : 'Search'}</button>
           </form>
           <button className={`guitar-play dashboard-truck ${truckPlaying ? 'is-playing' : ''}`} onClick={toggleTruck} aria-pressed={truckPlaying}>
@@ -293,15 +314,15 @@ export default function Page() {
       {results.length > 0 && <section className="youtube-results" aria-label="YouTube search results">
         <div className="results-heading"><span>SEARCH RESULTS</span><strong>{results.length} videos</strong></div>
         <div className="results-grid">{results.map((result) => <button className="youtube-result" key={result.id} onClick={() => playResult(result)}>
-          <span className="result-thumbnail">{result.thumbnail && <img src={result.thumbnail} alt="" />}<i><Play size={15} fill="currentColor" /></i><b className="result-type">{result.videoType}</b></span>
+          <span className="result-thumbnail">{result.thumbnail && <img src={result.thumbnail} alt="" />}<i><Play size={15} fill="currentColor" /></i><b className="result-duration">{result.duration}</b></span>
           <span><strong>{result.title}</strong><small>{result.channel}</small></span>
         </button>)}</div>
         {nextPageToken && <button className="load-more-button" type="button" onClick={refreshVideos} disabled={loading}>{loading ? <><LoaderCircle size={16} className="spin" /> Loading more</> : 'Refresh for more videos'}</button>}
       </section>}
 
-      <section className={`youtube-display ${selected ? 'has-video' : ''}`}>
+      <section ref={displayRef} className={`youtube-display ${selected ? 'has-video' : ''}`}>
         {selected ? <>
-          <div className="display-title"><div><span>NOW PLAYING</span><h2>{selected.title}</h2><p>{selected.channel}</p></div><div className="display-actions"><button className="display-play" onClick={togglePlayback} aria-label={playing ? 'Pause video' : 'Play video'}>{playing ? <Pause size={19} fill="currentColor" /> : <Play size={19} fill="currentColor" />}</button></div></div>
+          <div className="display-title"><div><span>NOW PLAYING</span><h2>{selected.title}</h2><p>{selected.channel}</p></div></div>
           <div className="youtube-video"><iframe ref={videoRef} onLoad={startVideoPlayback} src={`https://www.youtube.com/embed/${selected.id}?enablejsapi=1&autoplay=1&origin=${typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : ''}&rel=0`} title={selected.title} allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen /></div>
         </> : <div className="empty-display"><div className="empty-icon"><Music2 size={28} /></div><h2>Your next song lives here</h2><p>Search above to start listening</p></div>}
       </section>
