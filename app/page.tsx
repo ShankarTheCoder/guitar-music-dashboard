@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { LoaderCircle, Music2, Pause, Play, Search, Truck } from 'lucide-react'
 
-type Result = { id: string; title: string; channel: string; thumbnail: string }
+type Result = { id: string; title: string; channel: string; thumbnail: string; videoType: 'Short' | 'Long video' | 'Video' }
 
 export default function Page() {
   const [query, setQuery] = useState('')
@@ -27,11 +27,12 @@ export default function Page() {
       const response = await fetch(`/api/youtube/search?q=${encodeURIComponent(value)}`)
       const data = await response.json()
       if (!response.ok) throw new Error(data.error ?? 'Search failed')
-      const videos = data.items.map((item: { id: { videoId: string }; snippet: { title: string; channelTitle: string; thumbnails?: { medium?: { url: string } } } }) => ({
+      const videos = data.items.map((item: { id: { videoId: string }; videoType?: Result['videoType']; snippet: { title: string; channelTitle: string; thumbnails?: { medium?: { url: string } } } }) => ({
         id: item.id.videoId,
         title: item.snippet.title,
         channel: item.snippet.channelTitle,
         thumbnail: item.snippet.thumbnails?.medium?.url ?? '',
+        videoType: item.videoType ?? 'Video',
       }))
       setResults(videos)
         } catch (searchError) {
@@ -137,7 +138,7 @@ export default function Page() {
       {results.length > 0 && <section className="youtube-results" aria-label="YouTube search results">
         <div className="results-heading"><span>SEARCH RESULTS</span><strong>{results.length} videos</strong></div>
         <div className="results-grid">{results.map((result) => <button className="youtube-result" key={result.id} onClick={() => playResult(result)}>
-          <span className="result-thumbnail">{result.thumbnail && <img src={result.thumbnail} alt="" />}<i><Play size={15} fill="currentColor" /></i></span>
+          <span className="result-thumbnail">{result.thumbnail && <img src={result.thumbnail} alt="" />}<i><Play size={15} fill="currentColor" /></i><b className="result-type">{result.videoType}</b></span>
           <span><strong>{result.title}</strong><small>{result.channel}</small></span>
         </button>)}</div>
       </section>}
