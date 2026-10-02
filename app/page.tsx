@@ -1,7 +1,7 @@
 'use client'
 
-import { useRef, useState } from 'react'
-import { LoaderCircle, Music2, Pause, Play, Search } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Guitar, LoaderCircle, Music2, Pause, Play, Search } from 'lucide-react'
 
 type Result = { id: string; title: string; channel: string; thumbnail: string }
 
@@ -12,7 +12,10 @@ export default function Page() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [playing, setPlaying] = useState(false)
+  const [guitarPlaying, setGuitarPlaying] = useState(false)
   const videoRef = useRef<HTMLIFrameElement>(null)
+  const guitarTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const audioContextRef = useRef<AudioContext | null>(null)
 
   async function searchYouTube(event: React.FormEvent) {
     event.preventDefault()
@@ -44,11 +47,51 @@ export default function Page() {
     setResults([])
   }
 
+  function playGuitarChord() {
+    const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    if (!AudioContextClass) return
+    const context = audioContextRef.current ?? new AudioContextClass()
+    audioContextRef.current = context
+    if (context.state === 'suspended') void context.resume()
+
+    const now = context.currentTime
+    const notes = [110, 146.83, 196, 246.94, 293.66, 369.99]
+    notes.forEach((frequency, index) => {
+      const oscillator = context.createOscillator()
+      const gain = context.createGain()
+      oscillator.type = 'triangle'
+      oscillator.frequency.value = frequency
+      gain.gain.setValueAtTime(0.0001, now + index * 0.035)
+      gain.gain.exponentialRampToValueAtTime(0.12, now + index * 0.035 + 0.01)
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + index * 0.035 + 0.8)
+      oscillator.connect(gain).connect(context.destination)
+      oscillator.start(now + index * 0.035)
+      oscillator.stop(now + index * 0.035 + 0.85)
+    })
+  }
+
+  function toggleGuitar() {
+    if (guitarPlaying) {
+      if (guitarTimerRef.current) clearInterval(guitarTimerRef.current)
+      guitarTimerRef.current = null
+      setGuitarPlaying(false)
+      return
+    }
+    playGuitarChord()
+    guitarTimerRef.current = setInterval(playGuitarChord, 2200)
+    setGuitarPlaying(true)
+  }
+
   function togglePlayback() {
     const next = !playing
     setPlaying(next)
     videoRef.current?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: next ? 'playVideo' : 'pauseVideo', args: [] }), '*')
   }
+
+  useEffect(() => () => {
+    if (guitarTimerRef.current) clearInterval(guitarTimerRef.current)
+    void audioContextRef.current?.close()
+  }, [])
 
   return (
     <main className="youtube-app">
@@ -81,7 +124,7 @@ export default function Page() {
 
       <section className={`youtube-display ${selected ? 'has-video' : ''}`}>
         {selected ? <>
-          <div className="display-title"><div><span>NOW PLAYING</span><h2>{selected.title}</h2><p>{selected.channel}</p></div><button className="display-play" onClick={togglePlayback} aria-label={playing ? 'Pause video' : 'Play video'}>{playing ? <Pause size={19} fill="currentColor" /> : <Play size={19} fill="currentColor" />}</button></div>
+          <div className="display-title"><div><span>NOW PLAYING</span><h2>{selected.title}</h2><p>{selected.channel}</p></div><div className="display-actions"><button className={`guitar-play ${guitarPlaying ? 'is-playing' : ''}`} onClick={toggleGuitar} aria-pressed={guitarPlaying}><Guitar size={17} />{guitarPlaying ? 'Stop guitar' : 'Play guitar'}</button><button className="display-play" onClick={togglePlayback} aria-label={playing ? 'Pause video' : 'Play video'}>{playing ? <Pause size={19} fill="currentColor" /> : <Play size={19} fill="currentColor" />}</button></div></div>
           <div className="youtube-video"><iframe ref={videoRef} src={`https://www.youtube.com/embed/${selected.id}?enablejsapi=1&origin=${typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : ''}&rel=0`} title={selected.title} allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen /></div>
         </> : <div className="empty-display"><div className="empty-icon"><Music2 size={28} /></div><h2>Your next song lives here</h2><p>Search above to start listening</p></div>}
       </section>
