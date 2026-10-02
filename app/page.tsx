@@ -15,7 +15,7 @@ export default function Page() {
   const [playing, setPlaying] = useState(false)
   const [truckPlaying, setTruckPlaying] = useState(false)
   const [listening, setListening] = useState(false)
-  const recognitionRef = useRef<{ start: () => void; stop: () => void; onresult: ((event: { results: { [index: number]: { [index: number]: { transcript: string } } } }) => void) | null; onend: (() => void) | null; onerror: (() => void) | null } | null>(null)
+  const recognitionRef = useRef<{ start: () => void; stop: () => void; lang: string; interimResults: boolean; continuous: boolean; onresult: ((event: { results: { [index: number]: { [index: number]: { transcript: string } } } }) => void) | null; onend: (() => void) | null; onerror: (() => void) | null } | null>(null)
   const videoRef = useRef<HTMLIFrameElement>(null)
   const resultsRef = useRef<Result[]>([])
   const selectedRef = useRef<Result | null>(null)
@@ -37,6 +37,9 @@ export default function Page() {
     }
 
     const recognition = new SpeechRecognitionClass()
+    recognition.lang = navigator.language || 'en-US'
+    recognition.interimResults = false
+    recognition.continuous = false
     recognition.onresult = (event) => {
       const transcript = event.results[0][0].transcript.trim()
       setQuery(transcript)
@@ -51,7 +54,12 @@ export default function Page() {
     recognitionRef.current = recognition
     setError('')
     setListening(true)
-    recognition.start()
+    try {
+      recognition.start()
+    } catch {
+      setListening(false)
+      setError('Voice search could not start. Check microphone permission and try again.')
+    }
   }
 
   function clearSearch() {
