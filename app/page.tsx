@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { LoaderCircle, Mic, Music2, Play, Search, Truck, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, LoaderCircle, Mic, Music2, Play, Search, Truck, X } from 'lucide-react'
 
 type Result = { id: string; title: string; channel: string; thumbnail: string; duration: string }
 
@@ -21,6 +21,7 @@ export default function Page() {
   const displayRef = useRef<HTMLElement>(null)
   const resultsRef = useRef<Result[]>([])
   const selectedRef = useRef<Result | null>(null)
+  const historyRef = useRef<Result[]>([])
   const truckNodesRef = useRef<{ source: AudioScheduledSourceNode; gain: GainNode }[]>([])
   const audioContextRef = useRef<AudioContext | null>(null)
 
@@ -117,6 +118,7 @@ export default function Page() {
     setNextPageToken(null)
     setSelected(null)
     selectedRef.current = null
+    historyRef.current = []
     setPlaying(false)
     setError('')
   }
@@ -162,7 +164,7 @@ export default function Page() {
         title: item.snippet.title,
         channel: item.snippet.channelTitle,
         thumbnail: item.snippet.thumbnails?.medium?.url ?? '',
-        videoType: item.videoType ?? 'Long video',
+        duration: item.duration ?? '—',
       }))
       setResults((current) => {
         const updated = [...current, ...videos]
@@ -177,15 +179,36 @@ export default function Page() {
     }
   }
 
-  function playResult(result: Result) {
+  function playResult(result: Result, addToHistory = true) {
+    const current = selectedRef.current
+    if (addToHistory && current && current.id !== result.id) historyRef.current.push(current)
     selectedRef.current = result
     setSelected(result)
     setPlaying(true)
-    setResults((current) => {
-      const updated = current.filter((video) => video.id !== result.id)
+    setResults((currentResults) => {
+      const updated = currentResults.filter((video) => video.id !== result.id)
       resultsRef.current = updated
       return updated
     })
+  }
+
+  function playNextVideo() {
+    const nextVideo = resultsRef.current[0]
+    if (nextVideo) playResult(nextVideo)
+  }
+
+  function playPreviousVideo() {
+    const previousVideo = historyRef.current.pop()
+    if (!previousVideo) return
+    const current = selectedRef.current
+    if (current) {
+      setResults((currentResults) => {
+        const updated = [current, ...currentResults.filter((video) => video.id !== current.id)]
+        resultsRef.current = updated
+        return updated
+      })
+    }
+    playResult(previousVideo, false)
   }
 
   function toggleTruck() {
@@ -324,6 +347,7 @@ export default function Page() {
         {selected ? <>
           <div className="display-title"><div><span>NOW PLAYING</span><h2>{selected.title}</h2><p>{selected.channel}</p></div></div>
           <div className="youtube-video"><iframe ref={videoRef} onLoad={startVideoPlayback} src={`https://www.youtube.com/embed/${selected.id}?enablejsapi=1&autoplay=1&origin=${typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : ''}&rel=0`} title={selected.title} allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen /></div>
+          <nav className="video-navigation" aria-label="Video navigation"><button type="button" onClick={playPreviousVideo} disabled={historyRef.current.length === 0} aria-label="Previous video"><ChevronLeft size={18} /> Previous</button><button type="button" onClick={playNextVideo} disabled={results.length === 0} aria-label="Next video">Next <ChevronRight size={18} /></button></nav>
         </> : <div className="empty-display"><div className="empty-icon"><Music2 size={28} /></div><h2>Your next song lives here</h2><p>Search above to start listening</p></div>}
       </section>
 
