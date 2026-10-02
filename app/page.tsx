@@ -102,6 +102,11 @@ export default function Page() {
     videoRef.current?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: next ? 'playVideo' : 'pauseVideo', args: [] }), '*')
   }
 
+  function startVideoPlayback() {
+    if (!playing) setPlaying(true)
+    videoRef.current?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*')
+  }
+
   useEffect(() => () => {
     truckNodesRef.current.forEach(({ source }) => {
       try { source.stop() } catch { /* already stopped */ }
@@ -146,7 +151,7 @@ export default function Page() {
       <section className={`youtube-display ${selected ? 'has-video' : ''}`}>
         {selected ? <>
           <div className="display-title"><div><span>NOW PLAYING</span><h2>{selected.title}</h2><p>{selected.channel}</p></div><div className="display-actions"><button className="display-play" onClick={togglePlayback} aria-label={playing ? 'Pause video' : 'Play video'}>{playing ? <Pause size={19} fill="currentColor" /> : <Play size={19} fill="currentColor" />}</button></div></div>
-          <div className="youtube-video"><iframe ref={videoRef} src={`https://www.youtube.com/embed/${selected.id}?enablejsapi=1&origin=${typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : ''}&rel=0`} title={selected.title} allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen /></div>
+          <div className="youtube-video"><iframe ref={videoRef} onLoad={startVideoPlayback} src={`https://www.youtube.com/embed/${selected.id}?enablejsapi=1&autoplay=1&origin=${typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : ''}&rel=0`} title={selected.title} allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen /></div>
         </> : <div className="empty-display"><div className="empty-icon"><Music2 size={28} /></div><h2>Your next song lives here</h2><p>Search above to start listening</p></div>}
       </section>
 
