@@ -29,52 +29,74 @@ export default function Page() {
       return
     }
 
-    const speechWindow = window as typeof window & { SpeechRecognition?: new () => NonNullable<typeof recognitionRef.current>; webkitSpeechRecognition?: new () => NonNullable<typeof recognitionRef.current> }
+      type BrowserSpeechRecognition = NonNullable<typeof recognitionRef.current> & {
+      abort?: () => void
+      onstart?: (() => void) | null
+      onnomatch?: (() => void) | null
+    }
+    const speechWindow = window as typeof window & {
+      SpeechRecognition?: new () => BrowserSpeechRecognition
+      webkitSpeechRecognition?: new () => BrowserSpeechRecognition
+    }
     const SpeechRecognitionClass = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition
     if (!SpeechRecognitionClass) {
-      setError('Voice search is not supported in this browser. Try Chrome or Edge.')
+      setError('Voice search needs Chrome or Edge. You can still type a song title.')
       return
     }
 
-    // Start recognition directly from the click. Awaiting getUserMedia first can
-    // consume the browser's user gesture and make SpeechRecognition reject start().
+    // Stop an old session before creating a new one. This avoids the
+    // "recognition has already started" error after a cancelled search.
+    recognitionRef.current?.stop()
     const recognition = new SpeechRecognitionClass()
     recognition.lang = navigator.language || 'en-US'
     recognition.interimResults = false
     recognition.continuous = false
     recognition.onresult = (event) => {
       const transcript = event.results[0]?.[0]?.transcript?.trim() ?? ''
+      setListening(false)
       if (!transcript) {
-        setListening(false)
         setError('I could not understand that. Please try again.')
         return
       }
       setQuery(transcript)
-      setListening(false)
       void searchYouTube({ preventDefault: () => undefined } as React.FormEvent, transcript)
     }
-    recognition.onend = () => setListening(false)
+    recognition.onstart = () => {
+      setListening(true)
+      setError('')
+    }
+    recognition.onnomatch = () => {
+      setListening(false)
+      setError('I could not understand that. Please try again.')
+    }
+    recognition.onend = () => {
+      setListening(false)
+      recognitionRef.current = null
+    }
     recognition.onerror = (event) => {
       setListening(false)
+      recognitionRef.current = null
       const code = event.error
       if (code === 'not-allowed' || code === 'service-not-allowed') {
-        setError('Microphone access is blocked in this preview. Allow microphone access for this site, then try again.')
+        setError('Microphone access is blocked. Allow microphone access for this deployed site, then try again.')
       } else if (code === 'audio-capture') {
         setError('No microphone was detected. Connect a microphone and try again.')
       } else if (code === 'no-speech') {
-        setError('No speech detected. Tap the voice button and speak clearly.')
+        setError('No speech detected. Tap the microphone and speak clearly.')
       } else {
-        setError('Voice search could not start. Try the voice button again.')
+        setError('Voice search could not start. Try the microphone again.')
       }
     }
     recognitionRef.current = recognition
     setError('')
-    setListening(true)
     try {
+      // start() must run directly in the microphone button's click handler.
       recognition.start()
+      setListening(true)
     } catch {
       setListening(false)
-      setError('Voice search could not start. Tap the microphone button again.')
+      recognitionRef.current = null
+      setError('Voice search could not start. Tap the microphone again.')
     }
   }
 
