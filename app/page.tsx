@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { LoaderCircle, Mic, Music2, Pause, Play, Search, Truck, X } from 'lucide-react'
+import { LoaderCircle, Mic, Music2, Play, Search, Truck, X } from 'lucide-react'
 
 type Result = { id: string; title: string; channel: string; thumbnail: string; duration: string }
 
@@ -243,18 +243,6 @@ export default function Page() {
     player.postMessage(message, 'https://www.youtube-nocookie.com')
   }
 
-  function togglePlayback() {
-    const next = !playing
-    setPlaying(next)
-    sendPlayerCommand(next ? 'playVideo' : 'pauseVideo')
-    // YouTube can finish initializing just after a button click. Retry the same
-    // command briefly so the app button stays in sync with the embedded player.
-    if (next) {
-      window.setTimeout(() => sendPlayerCommand('playVideo'), 150)
-      window.setTimeout(() => sendPlayerCommand('playVideo'), 600)
-    }
-  }
-
   function startVideoPlayback() {
     if (!playing) setPlaying(true)
     const player = videoRef.current?.contentWindow
@@ -334,7 +322,7 @@ export default function Page() {
 
       <section ref={displayRef} className={`youtube-display ${selected ? 'has-video' : ''}`}>
         {selected ? <>
-          <div className="display-title"><div><span>NOW PLAYING</span><h2>{selected.title}</h2><p>{selected.channel}</p></div><div className="display-actions"><button className="display-play" onClick={togglePlayback} aria-label={playing ? 'Pause video' : 'Play video'}>{playing ? <Pause size={19} fill="currentColor" /> : <Play size={19} fill="currentColor" />}</button></div></div>
+          <div className="display-title"><div><span>NOW PLAYING</span><h2>{selected.title}</h2><p>{selected.channel}</p></div></div>
           <div className="youtube-video"><iframe ref={videoRef} onLoad={startVideoPlayback} src={`https://www.youtube.com/embed/${selected.id}?enablejsapi=1&autoplay=1&origin=${typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : ''}&rel=0`} title={selected.title} allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen /></div>
         </> : <div className="empty-display"><div className="empty-icon"><Music2 size={28} /></div><h2>Your next song lives here</h2><p>Search above to start listening</p></div>}
       </section>
