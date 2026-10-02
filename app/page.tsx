@@ -15,6 +15,7 @@ export default function Page() {
   const [playing, setPlaying] = useState(false)
   const [truckPlaying, setTruckPlaying] = useState(false)
   const [listening, setListening] = useState(false)
+  const [voiceSupported, setVoiceSupported] = useState(true)
   const recognitionRef = useRef<{ start: () => void; stop: () => void; lang: string; interimResults: boolean; continuous: boolean; onresult: ((event: { results: { [index: number]: { [index: number]: { transcript: string } } } }) => void) | null; onend: (() => void) | null; onerror: ((event: { error?: string }) => void) | null } | null>(null)
   const videoRef = useRef<HTMLIFrameElement>(null)
   const resultsRef = useRef<Result[]>([])
@@ -39,10 +40,16 @@ export default function Page() {
       webkitSpeechRecognition?: new () => BrowserSpeechRecognition
     }
     const SpeechRecognitionClass = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition
-    if (!SpeechRecognitionClass) {
-      setError('Voice search needs Chrome or Edge. You can still type a song title.')
+    if (!window.isSecureContext) {
+      setError('Voice search requires HTTPS. Open the deployed HTTPS address and allow microphone access.')
       return
     }
+    if (!SpeechRecognitionClass) {
+      setVoiceSupported(false)
+      setError('Voice search is supported in Chrome, Edge, and Safari. Firefox does not provide speech recognition yet; type your song title instead.')
+      return
+    }
+    setVoiceSupported(true)
 
     // Stop an old session before creating a new one. This avoids the
     // "recognition has already started" error after a cancelled search.
@@ -280,7 +287,7 @@ export default function Page() {
             <Search size={20} aria-hidden="true" />
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search any song on YouTube" aria-label="Search any song on YouTube" />
             {query.trim() && <button className="search-action search-clear" type="button" onClick={clearSearch} aria-label="Clear search" title="Clear search"><X size={18} /></button>}
-            <button className={`search-action search-voice ${listening ? 'is-listening' : ''}`} type="button" onClick={toggleVoiceSearch} aria-label={listening ? 'Stop voice search' : 'Search by voice'} aria-pressed={listening} title={listening ? 'Stop voice search' : 'Search by voice'}><Mic size={18} /></button>
+            <button className={`search-action search-voice ${listening ? 'is-listening' : ''}`} type="button" onClick={toggleVoiceSearch} aria-label={listening ? 'Stop voice search' : voiceSupported ? 'Search by voice' : 'Voice search is unavailable in this browser'} aria-pressed={listening} title={listening ? 'Stop voice search' : voiceSupported ? 'Search by voice' : 'Voice search works in Chrome, Edge, and Safari'}><Mic size={18} /></button>
             <button className="search-submit" type="submit" disabled={loading || !query.trim()}>{loading ? <LoaderCircle size={18} className="spin" /> : 'Search'}</button>
           </form>
           <button className={`guitar-play dashboard-truck ${truckPlaying ? 'is-playing' : ''}`} onClick={toggleTruck} aria-pressed={truckPlaying}>
