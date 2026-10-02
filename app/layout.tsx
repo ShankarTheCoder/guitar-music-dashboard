@@ -3,8 +3,48 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'GuitarPlay — Make today resonate',
-  description: 'A focused music practice dashboard for guitarists.',
+  title: 'GuitarPlay — Search and Play Music Online',
+  description:
+    'Search YouTube songs, discover full-length music, and play videos in a focused music dashboard built for everyday listening and practice.',
+  keywords: [
+    'search songs online',
+    'YouTube music search',
+    'play songs online',
+    'full song player',
+    'music practice dashboard',
+    'GuitarPlay',
+  ],
+  applicationName: 'GuitarPlay',
+  category: 'music',
+  creator: 'GuitarPlay',
+  publisher: 'GuitarPlay',
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+      'max-video-preview': -1,
+    },
+  },
+  alternates: {
+    canonical: '/',
+  },
+  openGraph: {
+    type: 'website',
+    siteName: 'GuitarPlay',
+    title: 'GuitarPlay — Search and Play Music Online',
+    description:
+      'Search YouTube songs, discover full-length music, and play videos in one focused music dashboard.',
+  },
+  twitter: {
+    card: 'summary',
+    title: 'GuitarPlay — Search and Play Music Online',
+    description:
+      'Search YouTube songs and play full-length music in one focused dashboard.',
+  },
   generator: 'v0.app',
   icons: {
     icon: [
