@@ -71,31 +71,27 @@ export default function Page() {
     if (context.state === 'suspended') void context.resume()
     const now = context.currentTime
     const master = context.createGain()
-    const rumble = context.createBiquadFilter()
-    rumble.type = 'lowpass'
-    rumble.frequency.value = 520
-    master.gain.value = 0.16
-    rumble.connect(master).connect(context.destination)
+    master.gain.value = 0.2
+    master.connect(context.destination)
 
-    const engine = context.createOscillator()
-    const engineGain = context.createGain()
-    engine.type = 'sawtooth'
-    engine.frequency.setValueAtTime(46, now)
-    engine.frequency.linearRampToValueAtTime(61, now + 2.5)
-    engineGain.gain.value = 0.7
-    engine.connect(engineGain).connect(rumble)
+    const siren = context.createOscillator()
+    const sirenGain = context.createGain()
+    siren.type = 'sawtooth'
+    sirenGain.gain.value = 0.0001
+    sirenGain.gain.setTargetAtTime(0.68, now, 0.04)
+    siren.connect(sirenGain).connect(master)
 
-    const diesel = context.createOscillator()
-    const dieselGain = context.createGain()
-    diesel.type = 'square'
-    diesel.frequency.setValueAtTime(92, now)
-    diesel.frequency.linearRampToValueAtTime(122, now + 2.5)
-    dieselGain.gain.value = 0.12
-    diesel.connect(dieselGain).connect(rumble)
+    // A repeating two-tone sweep gives the button a continuous fire-truck siren sound.
+    const cycle = 1.35
+    for (let offset = 0; offset < 120; offset += cycle) {
+      const start = now + offset
+      siren.frequency.setValueAtTime(660, start)
+      siren.frequency.linearRampToValueAtTime(980, start + cycle * 0.48)
+      siren.frequency.linearRampToValueAtTime(660, start + cycle)
+    }
 
-    engine.start(now)
-    diesel.start(now)
-    truckNodesRef.current = [{ source: engine, gain: master }, { source: diesel, gain: master }]
+    siren.start(now)
+    truckNodesRef.current = [{ source: siren, gain: master }]
     setTruckPlaying(true)
   }
 
