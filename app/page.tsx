@@ -55,18 +55,42 @@ export default function Page() {
     if (context.state === 'suspended') void context.resume()
 
     const now = context.currentTime
+    const master = context.createGain()
+    const tone = context.createBiquadFilter()
+    const body = context.createBiquadFilter()
+    tone.type = 'lowpass'
+    tone.frequency.setValueAtTime(4200, now)
+    tone.Q.value = 0.45
+    body.type = 'peaking'
+    body.frequency.value = 180
+    body.Q.value = 0.8
+    body.gain.value = 3
+    master.gain.setValueAtTime(0.0001, now)
+    master.gain.exponentialRampToValueAtTime(0.32, now + 0.025)
+    master.gain.exponentialRampToValueAtTime(0.0001, now + 2.1)
+    tone.connect(body).connect(master).connect(context.destination)
+
     const notes = [110, 146.83, 196, 246.94, 293.66, 369.99]
     notes.forEach((frequency, index) => {
+      const start = now + index * 0.045
       const oscillator = context.createOscillator()
-      const gain = context.createGain()
-      oscillator.type = 'triangle'
-      oscillator.frequency.value = frequency
-      gain.gain.setValueAtTime(0.0001, now + index * 0.035)
-      gain.gain.exponentialRampToValueAtTime(0.12, now + index * 0.035 + 0.01)
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + index * 0.035 + 0.8)
-      oscillator.connect(gain).connect(context.destination)
-      oscillator.start(now + index * 0.035)
-      oscillator.stop(now + index * 0.035 + 0.85)
+      const harmonic = context.createOscillator()
+      const pluck = context.createGain()
+      oscillator.type = 'sawtooth'
+      harmonic.type = 'triangle'
+      oscillator.frequency.setValueAtTime(frequency * 1.012, start)
+      oscillator.detune.setValueAtTime(-5, start)
+      harmonic.frequency.value = frequency * 2
+      pluck.gain.setValueAtTime(0.0001, start)
+      pluck.gain.exponentialRampToValueAtTime(0.18 / (index + 1), start + 0.008)
+      pluck.gain.exponentialRampToValueAtTime(0.0001, start + 1.65)
+      oscillator.connect(pluck)
+      harmonic.connect(pluck)
+      pluck.connect(tone)
+      oscillator.start(start)
+      harmonic.start(start)
+      oscillator.stop(start + 1.8)
+      harmonic.stop(start + 1.8)
     })
   }
 
