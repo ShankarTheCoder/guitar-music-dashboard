@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { LoaderCircle, Music2, Pause, Play, Search, Truck } from 'lucide-react'
+import { LoaderCircle, Mic, Music2, Pause, Play, Search, Truck, X } from 'lucide-react'
 
 type Result = { id: string; title: string; channel: string; thumbnail: string; videoType: 'Short' | 'Long video' | 'Video' }
 
@@ -14,15 +14,56 @@ export default function Page() {
   const [error, setError] = useState('')
   const [playing, setPlaying] = useState(false)
   const [truckPlaying, setTruckPlaying] = useState(false)
+  const [listening, setListening] = useState(false)
+  const recognitionRef = useRef<{ start: () => void; stop: () => void; onresult: ((event: { results: { [index: number]: { [index: number]: { transcript: string } } } }) => void) | null; onend: (() => void) | null; onerror: (() => void) | null } | null>(null)
   const videoRef = useRef<HTMLIFrameElement>(null)
   const resultsRef = useRef<Result[]>([])
   const selectedRef = useRef<Result | null>(null)
   const truckNodesRef = useRef<{ source: AudioScheduledSourceNode; gain: GainNode }[]>([])
   const audioContextRef = useRef<AudioContext | null>(null)
 
-  async function searchYouTube(event: React.FormEvent) {
+  function toggleVoiceSearch() {
+    if (listening) {
+      recognitionRef.current?.stop()
+      setListening(false)
+      return
+    }
+
+    const speechWindow = window as typeof window & { SpeechRecognition?: new () => NonNullable<typeof recognitionRef.current>; webkitSpeechRecognition?: new () => NonNullable<typeof recognitionRef.current> }
+    const SpeechRecognitionClass = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition
+    if (!SpeechRecognitionClass) {
+      setError('Voice search is not supported in this browser.')
+      return
+    }
+
+    const recognition = new SpeechRecognitionClass()
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript.trim()
+      setQuery(transcript)
+      setListening(false)
+      void searchYouTube({ preventDefault: () => undefined } as React.FormEvent, transcript)
+    }
+    recognition.onend = () => setListening(false)
+    recognition.onerror = () => {
+      setListening(false)
+      setError('Voice search could not hear you. Please try again.')
+    }
+    recognitionRef.current = recognition
+    setError('')
+    setListening(true)
+    recognition.start()
+  }
+
+  function clearSearch() {
+    recognitionRef.current?.stop()
+    setListening(false)
+    setQuery('')
+    setError('')
+  }
+
+  async function searchYouTube(event: React.FormEvent, submittedQuery = query) {
     event.preventDefault()
-    const value = query.trim()
+    const value = submittedQuery.trim()
     if (!value) return
     setLoading(true)
     setError('')
@@ -186,7 +227,9 @@ export default function Page() {
           <form className="youtube-search" onSubmit={searchYouTube}>
             <Search size={20} aria-hidden="true" />
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search any song on YouTube" aria-label="Search any song on YouTube" />
-            <button type="submit" disabled={loading || !query.trim()}>{loading ? <LoaderCircle size={18} className="spin" /> : 'Search'}</button>
+            {query && <button className="search-action search-clear" type="button" onClick={clearSearch} aria-label="Clear search"><X size={18} /></button>}
+            <button className={`search-action search-voice ${listening ? 'is-listening' : ''}`} type="button" onClick={toggleVoiceSearch} aria-label={listening ? 'Stop voice search' : 'Search by voice'} aria-pressed={listening}><Mic size={18} /></button>
+            <button className="search-submit" type="submit" disabled={loading || !query.trim()}>{loading ? <LoaderCircle size={18} className="spin" /> : 'Search'}</button>
           </form>
           <button className={`guitar-play dashboard-truck ${truckPlaying ? 'is-playing' : ''}`} onClick={toggleTruck} aria-pressed={truckPlaying}>
             <Truck size={17} />{truckPlaying ? 'Stop truck' : 'Truck sound'}
