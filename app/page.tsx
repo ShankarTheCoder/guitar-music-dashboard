@@ -22,7 +22,7 @@ export default function Page() {
   const truckNodesRef = useRef<{ source: AudioScheduledSourceNode; gain: GainNode }[]>([])
   const audioContextRef = useRef<AudioContext | null>(null)
 
-  function toggleVoiceSearch() {
+  async function toggleVoiceSearch() {
     if (listening) {
       recognitionRef.current?.stop()
       setListening(false)
@@ -32,7 +32,17 @@ export default function Page() {
     const speechWindow = window as typeof window & { SpeechRecognition?: new () => NonNullable<typeof recognitionRef.current>; webkitSpeechRecognition?: new () => NonNullable<typeof recognitionRef.current> }
     const SpeechRecognitionClass = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition
     if (!SpeechRecognitionClass) {
-      setError('Voice search is not supported in this browser.')
+      setError('Voice search is not supported in this browser. Try Chrome or Edge.')
+      return
+    }
+
+    try {
+      if (navigator.mediaDevices?.getUserMedia) {
+        const microphone = await navigator.mediaDevices.getUserMedia({ audio: true })
+        microphone.getTracks().forEach((track) => track.stop())
+      }
+    } catch {
+      setError('Please allow microphone access, then tap the voice button again.')
       return
     }
 
@@ -41,7 +51,12 @@ export default function Page() {
     recognition.interimResults = false
     recognition.continuous = false
     recognition.onresult = (event) => {
-      const transcript = event.results[0][0].transcript.trim()
+      const transcript = event.results[0]?.[0]?.transcript?.trim() ?? ''
+      if (!transcript) {
+        setListening(false)
+        setError('I could not understand that. Please try again.')
+        return
+      }
       setQuery(transcript)
       setListening(false)
       void searchYouTube({ preventDefault: () => undefined } as React.FormEvent, transcript)
@@ -49,7 +64,7 @@ export default function Page() {
     recognition.onend = () => setListening(false)
     recognition.onerror = () => {
       setListening(false)
-      setError('Voice search could not hear you. Please try again.')
+      setError('Voice search stopped. Check microphone permission and try again.')
     }
     recognitionRef.current = recognition
     setError('')
@@ -58,7 +73,7 @@ export default function Page() {
       recognition.start()
     } catch {
       setListening(false)
-      setError('Voice search could not start. Check microphone permission and try again.')
+      setError('Voice search could not start. Tap the microphone button again.')
     }
   }
 
