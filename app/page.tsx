@@ -238,24 +238,35 @@ export default function Page() {
   function sendPlayerCommand(func: 'playVideo' | 'pauseVideo') {
     const player = videoRef.current?.contentWindow
     if (!player) return
-    player.postMessage(JSON.stringify({ event: 'command', func, args: [] }), '*')
+    const message = JSON.stringify({ event: 'command', func, args: [] })
+    player.postMessage(message, 'https://www.youtube.com')
+    player.postMessage(message, 'https://www.youtube-nocookie.com')
   }
 
   function togglePlayback() {
     const next = !playing
     setPlaying(next)
     sendPlayerCommand(next ? 'playVideo' : 'pauseVideo')
+    // YouTube can finish initializing just after a button click. Retry the same
+    // command briefly so the app button stays in sync with the embedded player.
+    if (next) {
+      window.setTimeout(() => sendPlayerCommand('playVideo'), 150)
+      window.setTimeout(() => sendPlayerCommand('playVideo'), 600)
+    }
   }
 
   function startVideoPlayback() {
     if (!playing) setPlaying(true)
     const player = videoRef.current?.contentWindow
     if (!player) return
-    player.postMessage(JSON.stringify({ event: 'listening', id: '1', channel: 'channel' }), '*')
-    player.postMessage(JSON.stringify({ event: 'command', func: 'addEventListener', args: ['onStateChange'] }), '*')
-    // The iframe can finish loading before the YouTube player API is ready.
-    // Send the command again after the API has initialized so the play button is reliable.
-    window.setTimeout(() => sendPlayerCommand('playVideo'), 300)
+    const setup = JSON.stringify({ event: 'listening', id: '1', channel: 'channel' })
+    const listener = JSON.stringify({ event: 'command', func: 'addEventListener', args: ['onStateChange'] })
+    player.postMessage(setup, 'https://www.youtube.com')
+    player.postMessage(listener, 'https://www.youtube.com')
+    player.postMessage(setup, 'https://www.youtube-nocookie.com')
+    player.postMessage(listener, 'https://www.youtube-nocookie.com')
+    window.setTimeout(() => sendPlayerCommand('playVideo'), 150)
+    window.setTimeout(() => sendPlayerCommand('playVideo'), 600)
   }
 
   useEffect(() => {
