@@ -18,6 +18,7 @@ export default function Page() {
   const [voiceSupported, setVoiceSupported] = useState(true)
   const recognitionRef = useRef<{ start: () => void; stop: () => void; lang: string; interimResults: boolean; continuous: boolean; onresult: ((event: { results: { [index: number]: { [index: number]: { transcript: string } } } }) => void) | null; onend: (() => void) | null; onerror: ((event: { error?: string }) => void) | null } | null>(null)
   const videoRef = useRef<HTMLIFrameElement>(null)
+  const displayRef = useRef<HTMLElement>(null)
   const resultsRef = useRef<Result[]>([])
   const selectedRef = useRef<Result | null>(null)
   const truckNodesRef = useRef<{ source: AudioScheduledSourceNode; gain: GainNode }[]>([])
@@ -249,6 +250,11 @@ export default function Page() {
   }
 
   useEffect(() => {
+    if (!selected) return
+    displayRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [selected])
+
+  useEffect(() => {
     const handleYouTubeMessage = (event: MessageEvent) => {
       if (!event.origin.includes('youtube.com')) return
       let message: { event?: string; info?: number }
@@ -306,7 +312,7 @@ export default function Page() {
         {nextPageToken && <button className="load-more-button" type="button" onClick={refreshVideos} disabled={loading}>{loading ? <><LoaderCircle size={16} className="spin" /> Loading more</> : 'Refresh for more videos'}</button>}
       </section>}
 
-      <section className={`youtube-display ${selected ? 'has-video' : ''}`}>
+      <section ref={displayRef} className={`youtube-display ${selected ? 'has-video' : ''}`}>
         {selected ? <>
           <div className="display-title"><div><span>NOW PLAYING</span><h2>{selected.title}</h2><p>{selected.channel}</p></div><div className="display-actions"><button className="display-play" onClick={togglePlayback} aria-label={playing ? 'Pause video' : 'Play video'}>{playing ? <Pause size={19} fill="currentColor" /> : <Play size={19} fill="currentColor" />}</button></div></div>
           <div className="youtube-video"><iframe ref={videoRef} onLoad={startVideoPlayback} src={`https://www.youtube.com/embed/${selected.id}?enablejsapi=1&autoplay=1&origin=${typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : ''}&rel=0`} title={selected.title} allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen /></div>
