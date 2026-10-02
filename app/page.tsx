@@ -15,7 +15,7 @@ export default function Page() {
   const [playing, setPlaying] = useState(false)
   const [truckPlaying, setTruckPlaying] = useState(false)
   const [listening, setListening] = useState(false)
-  const recognitionRef = useRef<{ start: () => void; stop: () => void; lang: string; interimResults: boolean; continuous: boolean; onresult: ((event: { results: { [index: number]: { [index: number]: { transcript: string } } } }) => void) | null; onend: (() => void) | null; onerror: (() => void) | null } | null>(null)
+  const recognitionRef = useRef<{ start: () => void; stop: () => void; lang: string; interimResults: boolean; continuous: boolean; onresult: ((event: { results: { [index: number]: { [index: number]: { transcript: string } } } }) => void) | null; onend: (() => void) | null; onerror: ((event: { error?: string }) => void) | null } | null>(null)
   const videoRef = useRef<HTMLIFrameElement>(null)
   const resultsRef = useRef<Result[]>([])
   const selectedRef = useRef<Result | null>(null)
@@ -36,16 +36,8 @@ export default function Page() {
       return
     }
 
-    try {
-      if (navigator.mediaDevices?.getUserMedia) {
-        const microphone = await navigator.mediaDevices.getUserMedia({ audio: true })
-        microphone.getTracks().forEach((track) => track.stop())
-      }
-    } catch {
-      setError('Please allow microphone access, then tap the voice button again.')
-      return
-    }
-
+    // Start recognition directly from the click. Awaiting getUserMedia first can
+    // consume the browser's user gesture and make SpeechRecognition reject start().
     const recognition = new SpeechRecognitionClass()
     recognition.lang = navigator.language || 'en-US'
     recognition.interimResults = false
@@ -62,9 +54,18 @@ export default function Page() {
       void searchYouTube({ preventDefault: () => undefined } as React.FormEvent, transcript)
     }
     recognition.onend = () => setListening(false)
-    recognition.onerror = () => {
+    recognition.onerror = (event) => {
       setListening(false)
-      setError('Voice search stopped. Check microphone permission and try again.')
+      const code = event.error
+      if (code === 'not-allowed' || code === 'service-not-allowed') {
+        setError('Microphone access is blocked in this preview. Allow microphone access for this site, then try again.')
+      } else if (code === 'audio-capture') {
+        setError('No microphone was detected. Connect a microphone and try again.')
+      } else if (code === 'no-speech') {
+        setError('No speech detected. Tap the voice button and speak clearly.')
+      } else {
+        setError('Voice search could not start. Try the voice button again.')
+      }
     }
     recognitionRef.current = recognition
     setError('')
