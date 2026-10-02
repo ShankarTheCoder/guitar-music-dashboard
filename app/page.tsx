@@ -8,6 +8,7 @@ type Result = { id: string; title: string; channel: string; thumbnail: string; v
 export default function Page() {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<Result[]>([])
+  const [nextPageToken, setNextPageToken] = useState<string | null>(null)
   const [selected, setSelected] = useState<Result | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -35,9 +36,34 @@ export default function Page() {
         videoType: item.videoType ?? 'Video',
       }))
       setResults(videos)
-        } catch (searchError) {
+      setNextPageToken(data.nextPageToken ?? null)
+    } catch (searchError) {
       setResults([])
       setError(searchError instanceof Error ? searchError.message : 'Search failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function refreshVideos() {
+    if (!nextPageToken || loading || !query.trim()) return
+    setLoading(true)
+    setError('')
+    try {
+      const response = await fetch(`/api/youtube/search?q=${encodeURIComponent(query.trim())}&pageToken=${encodeURIComponent(nextPageToken)}`)
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error ?? 'Could not load more videos')
+      const videos: Result[] = data.items.map((item: { id: { videoId: string }; videoType?: Result['videoType']; snippet: { title: string; channelTitle: string; thumbnails?: { medium?: { url: string } } } }) => ({
+        id: item.id.videoId,
+        title: item.snippet.title,
+        channel: item.snippet.channelTitle,
+        thumbnail: item.snippet.thumbnails?.medium?.url ?? '',
+        videoType: item.videoType ?? 'Long video',
+      }))
+      setResults((current) => [...current, ...videos])
+      setNextPageToken(data.nextPageToken ?? null)
+    } catch (refreshError) {
+      setError(refreshError instanceof Error ? refreshError.message : 'Could not load more videos')
     } finally {
       setLoading(false)
     }
@@ -146,6 +172,7 @@ export default function Page() {
           <span className="result-thumbnail">{result.thumbnail && <img src={result.thumbnail} alt="" />}<i><Play size={15} fill="currentColor" /></i><b className="result-type">{result.videoType}</b></span>
           <span><strong>{result.title}</strong><small>{result.channel}</small></span>
         </button>)}</div>
+        {nextPageToken && <button className="load-more-button" type="button" onClick={refreshVideos} disabled={loading}>{loading ? <><LoaderCircle size={16} className="spin" /> Loading more</> : 'Refresh for more videos'}</button>}
       </section>}
 
       <section className={`youtube-display ${selected ? 'has-video' : ''}`}>

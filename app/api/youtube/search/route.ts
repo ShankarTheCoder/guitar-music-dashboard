@@ -11,7 +11,9 @@ export async function GET(request: Request) {
   const asksForNew = /\b(new|latest|recent|newest|trending|202[4-9]|20[3-9]\d)\b/.test(lowerQuery)
   const asksForOld = /\b(old|classic|retro|evergreen|90s|80s|2000s|2010s)\b/.test(lowerQuery)
   const order = asksForNew && !asksForOld ? 'date' : 'relevance'
+  const pageToken = new URL(request.url).searchParams.get('pageToken')?.trim()
   const params = new URLSearchParams({ part: 'snippet', q: query, type: 'video', maxResults: '50', order, videoEmbeddable: 'true', key: apiKey })
+  if (pageToken) params.set('pageToken', pageToken)
   const referer = request.headers.get('referer') ?? request.url
   const response = await fetch(`https://www.googleapis.com/youtube/v3/search?${params}`, { headers: { Referer: referer }, next: { revalidate: 60 } })
   const data = await response.json()
@@ -19,7 +21,7 @@ export async function GET(request: Request) {
 
   const items = data.items ?? []
   const ids = items.map((item: { id?: { videoId?: string } }) => item.id?.videoId).filter(Boolean).join(',')
-  if (!ids) return NextResponse.json({ items: [] })
+  if (!ids) return NextResponse.json({ items: [], nextPageToken: data.nextPageToken ?? null })
 
   const detailsParams = new URLSearchParams({ part: 'contentDetails', id: ids, key: apiKey })
   const detailsResponse = await fetch(`https://www.googleapis.com/youtube/v3/videos?${detailsParams}`, { headers: { Referer: referer }, next: { revalidate: 60 } })
@@ -38,5 +40,8 @@ export async function GET(request: Request) {
     return !isShortTitle && duration !== undefined && duration > 60
   })
 
-  return NextResponse.json({ items: longVideos.map((item: object) => ({ ...item, videoType: 'Long video' })) })
+  return NextResponse.json({
+    items: longVideos.map((item: object) => ({ ...item, videoType: 'Long video' })),
+    nextPageToken: data.nextPageToken ?? null,
+  })
 }
