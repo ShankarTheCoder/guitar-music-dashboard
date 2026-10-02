@@ -121,11 +121,16 @@ export default function Page() {
         <p className="youtube-kicker">YOUR MUSIC, IN ONE PLACE</p>
         <h1>Find a song.<br /><em>Press play.</em></h1>
         <p className="youtube-intro">Search YouTube for any song and play it right here.</p>
-        <form className="youtube-search" onSubmit={searchYouTube}>
-          <Search size={20} aria-hidden="true" />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search any song on YouTube" aria-label="Search any song on YouTube" />
-          <button type="submit" disabled={loading || !query.trim()}>{loading ? <LoaderCircle size={18} className="spin" /> : 'Search'}</button>
-        </form>
+        <div className="dashboard-controls">
+          <form className="youtube-search" onSubmit={searchYouTube}>
+            <Search size={20} aria-hidden="true" />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search any song on YouTube" aria-label="Search any song on YouTube" />
+            <button type="submit" disabled={loading || !query.trim()}>{loading ? <LoaderCircle size={18} className="spin" /> : 'Search'}</button>
+          </form>
+          <button className={`guitar-play dashboard-truck ${truckPlaying ? 'is-playing' : ''}`} onClick={toggleTruck} aria-pressed={truckPlaying}>
+            <Truck size={17} />{truckPlaying ? 'Stop truck' : 'Truck sound'}
+          </button>
+        </div>
         {error && <p className="youtube-error" role="alert">{error}</p>}
       </section>
 
@@ -139,7 +144,7 @@ export default function Page() {
 
       <section className={`youtube-display ${selected ? 'has-video' : ''}`}>
         {selected ? <>
-          <div className="display-title"><div><span>NOW PLAYING</span><h2>{selected.title}</h2><p>{selected.channel}</p></div><div className="display-actions"><button className={`guitar-play ${truckPlaying ? 'is-playing' : ''}`} onClick={toggleTruck} aria-pressed={truckPlaying}><Truck size={17} />{truckPlaying ? 'Stop truck' : 'Truck sound'}</button><button className="display-play" onClick={togglePlayback} aria-label={playing ? 'Pause video' : 'Play video'}>{playing ? <Pause size={19} fill="currentColor" /> : <Play size={19} fill="currentColor" />}</button></div></div>
+          <div className="display-title"><div><span>NOW PLAYING</span><h2>{selected.title}</h2><p>{selected.channel}</p></div><div className="display-actions"><button className="display-play" onClick={togglePlayback} aria-label={playing ? 'Pause video' : 'Play video'}>{playing ? <Pause size={19} fill="currentColor" /> : <Play size={19} fill="currentColor" />}</button></div></div>
           <div className="youtube-video"><iframe ref={videoRef} src={`https://www.youtube.com/embed/${selected.id}?enablejsapi=1&origin=${typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : ''}&rel=0`} title={selected.title} allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen /></div>
         </> : <div className="empty-display"><div className="empty-icon"><Music2 size={28} /></div><h2>Your next song lives here</h2><p>Search above to start listening</p></div>}
       </section>
