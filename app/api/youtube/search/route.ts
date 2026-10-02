@@ -7,7 +7,20 @@ export async function GET(request: Request) {
   if (!query) return NextResponse.json({ error: 'Search query is required.' }, { status: 400 })
   if (!apiKey) return NextResponse.json({ error: 'YouTube search is not configured. Add YOUTUBE_API_KEY in the project Vars.' }, { status: 503 })
 
-  const params = new URLSearchParams({ part: 'snippet', q: query, type: 'video', maxResults: '50', videoEmbeddable: 'true', key: apiKey })
+  const lowerQuery = query.toLocaleLowerCase()
+  const asksForNew = /\b(new|latest|recent|newest|trending|202[4-9]|20[3-9]\d)\b/.test(lowerQuery)
+  const asksForOld = /\b(old|classic|retro|evergreen|90s|80s|2000s|2010s)\b/.test(lowerQuery)
+  const order = asksForNew && !asksForOld ? 'date' : 'relevance'
+
+  const params = new URLSearchParams({
+    part: 'snippet',
+    q: query,
+    type: 'video',
+    maxResults: '50',
+    order,
+    videoEmbeddable: 'true',
+    key: apiKey,
+  })
   const referer = request.headers.get('referer') ?? request.url
   const response = await fetch(`https://www.googleapis.com/youtube/v3/search?${params.toString()}`, {
     headers: { Referer: referer },
