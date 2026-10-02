@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Guitar, LoaderCircle, Music2, Pause, Play, Search } from 'lucide-react'
+import { LoaderCircle, Music2, Pause, Play, Search, Truck } from 'lucide-react'
 
 type Result = { id: string; title: string; channel: string; thumbnail: string }
 
@@ -12,9 +12,9 @@ export default function Page() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [playing, setPlaying] = useState(false)
-  const [guitarPlaying, setGuitarPlaying] = useState(false)
+  const [truckPlaying, setTruckPlaying] = useState(false)
   const videoRef = useRef<HTMLIFrameElement>(null)
-  const guitarTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const truckTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
 
   async function searchYouTube(event: React.FormEvent) {
@@ -47,7 +47,7 @@ export default function Page() {
     setResults([])
   }
 
-  function playGuitarChord() {
+  function playTruckSound() {
     const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
     if (!AudioContextClass) return
     const context = audioContextRef.current ?? new AudioContextClass()
@@ -70,40 +70,48 @@ export default function Page() {
     master.gain.exponentialRampToValueAtTime(0.0001, now + 2.1)
     tone.connect(body).connect(master).connect(context.destination)
 
-    const notes = [110, 146.83, 196, 246.94, 293.66, 369.99]
-    notes.forEach((frequency, index) => {
-      const start = now + index * 0.045
-      const oscillator = context.createOscillator()
-      const harmonic = context.createOscillator()
-      const pluck = context.createGain()
-      oscillator.type = 'sawtooth'
-      harmonic.type = 'triangle'
-      oscillator.frequency.setValueAtTime(frequency * 1.012, start)
-      oscillator.detune.setValueAtTime(-5, start)
-      harmonic.frequency.value = frequency * 2
-      pluck.gain.setValueAtTime(0.0001, start)
-      pluck.gain.exponentialRampToValueAtTime(0.18 / (index + 1), start + 0.008)
-      pluck.gain.exponentialRampToValueAtTime(0.0001, start + 1.65)
-      oscillator.connect(pluck)
-      harmonic.connect(pluck)
-      pluck.connect(tone)
-      oscillator.start(start)
-      harmonic.start(start)
-      oscillator.stop(start + 1.8)
-      harmonic.stop(start + 1.8)
-    })
+    const horn = context.createOscillator()
+    const hornHarmonic = context.createOscillator()
+    const engine = context.createOscillator()
+    const hornGain = context.createGain()
+    const engineGain = context.createGain()
+    horn.type = 'sawtooth'
+    hornHarmonic.type = 'square'
+    engine.type = 'sawtooth'
+    horn.frequency.setValueAtTime(330, now)
+    horn.frequency.exponentialRampToValueAtTime(245, now + 0.7)
+    hornHarmonic.frequency.setValueAtTime(165, now)
+    engine.frequency.setValueAtTime(58, now)
+    engine.frequency.linearRampToValueAtTime(72, now + 1.8)
+    hornGain.gain.setValueAtTime(0.0001, now)
+    hornGain.gain.exponentialRampToValueAtTime(0.16, now + 0.04)
+    hornGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.4)
+    engineGain.gain.setValueAtTime(0.0001, now)
+    engineGain.gain.exponentialRampToValueAtTime(0.22, now + 0.12)
+    engineGain.gain.exponentialRampToValueAtTime(0.0001, now + 2.05)
+    horn.connect(hornGain)
+    hornHarmonic.connect(hornGain)
+    engine.connect(engineGain)
+    hornGain.connect(tone)
+    engineGain.connect(body)
+    horn.start(now)
+    hornHarmonic.start(now)
+    engine.start(now)
+    horn.stop(now + 1.5)
+    hornHarmonic.stop(now + 1.5)
+    engine.stop(now + 2.1)
   }
 
-  function toggleGuitar() {
-    if (guitarPlaying) {
-      if (guitarTimerRef.current) clearInterval(guitarTimerRef.current)
-      guitarTimerRef.current = null
-      setGuitarPlaying(false)
+  function toggleTruck() {
+    if (truckPlaying) {
+      if (truckTimerRef.current) clearInterval(truckTimerRef.current)
+      truckTimerRef.current = null
+      setTruckPlaying(false)
       return
     }
-    playGuitarChord()
-    guitarTimerRef.current = setInterval(playGuitarChord, 2200)
-    setGuitarPlaying(true)
+    playTruckSound()
+    truckTimerRef.current = setInterval(playTruckSound, 2200)
+    setTruckPlaying(true)
   }
 
   function togglePlayback() {
@@ -113,7 +121,7 @@ export default function Page() {
   }
 
   useEffect(() => () => {
-    if (guitarTimerRef.current) clearInterval(guitarTimerRef.current)
+    if (truckTimerRef.current) clearInterval(truckTimerRef.current)
     void audioContextRef.current?.close()
   }, [])
 
@@ -148,7 +156,7 @@ export default function Page() {
 
       <section className={`youtube-display ${selected ? 'has-video' : ''}`}>
         {selected ? <>
-          <div className="display-title"><div><span>NOW PLAYING</span><h2>{selected.title}</h2><p>{selected.channel}</p></div><div className="display-actions"><button className={`guitar-play ${guitarPlaying ? 'is-playing' : ''}`} onClick={toggleGuitar} aria-pressed={guitarPlaying}><Guitar size={17} />{guitarPlaying ? 'Stop guitar' : 'Play guitar'}</button><button className="display-play" onClick={togglePlayback} aria-label={playing ? 'Pause video' : 'Play video'}>{playing ? <Pause size={19} fill="currentColor" /> : <Play size={19} fill="currentColor" />}</button></div></div>
+          <div className="display-title"><div><span>NOW PLAYING</span><h2>{selected.title}</h2><p>{selected.channel}</p></div><div className="display-actions"><button className={`guitar-play ${truckPlaying ? 'is-playing' : ''}`} onClick={toggleTruck} aria-pressed={truckPlaying}><Truck size={17} />{truckPlaying ? 'Stop truck' : 'Truck sound'}</button><button className="display-play" onClick={togglePlayback} aria-label={playing ? 'Pause video' : 'Play video'}>{playing ? <Pause size={19} fill="currentColor" /> : <Play size={19} fill="currentColor" />}</button></div></div>
           <div className="youtube-video"><iframe ref={videoRef} src={`https://www.youtube.com/embed/${selected.id}?enablejsapi=1&origin=${typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : ''}&rel=0`} title={selected.title} allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen /></div>
         </> : <div className="empty-display"><div className="empty-icon"><Music2 size={28} /></div><h2>Your next song lives here</h2><p>Search above to start listening</p></div>}
       </section>
