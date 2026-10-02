@@ -15,6 +15,8 @@ export default function Page() {
   const [playing, setPlaying] = useState(false)
   const [truckPlaying, setTruckPlaying] = useState(false)
   const videoRef = useRef<HTMLIFrameElement>(null)
+  const resultsRef = useRef<Result[]>([])
+  const selectedRef = useRef<Result | null>(null)
   const truckNodesRef = useRef<{ source: AudioScheduledSourceNode; gain: GainNode }[]>([])
   const audioContextRef = useRef<AudioContext | null>(null)
 
@@ -36,6 +38,7 @@ export default function Page() {
         videoType: item.videoType ?? 'Video',
       }))
       setResults(videos)
+      resultsRef.current = videos
       setNextPageToken(data.nextPageToken ?? null)
     } catch (searchError) {
       setResults([])
@@ -60,7 +63,11 @@ export default function Page() {
         thumbnail: item.snippet.thumbnails?.medium?.url ?? '',
         videoType: item.videoType ?? 'Long video',
       }))
-      setResults((current) => [...current, ...videos])
+      setResults((current) => {
+        const updated = [...current, ...videos]
+        resultsRef.current = updated
+        return updated
+      })
       setNextPageToken(data.nextPageToken ?? null)
     } catch (refreshError) {
       setError(refreshError instanceof Error ? refreshError.message : 'Could not load more videos')
@@ -70,9 +77,14 @@ export default function Page() {
   }
 
   function playResult(result: Result) {
+    selectedRef.current = result
     setSelected(result)
     setPlaying(true)
-      setResults((current) => current.filter((video) => video.id !== result.id))
+    setResults((current) => {
+      const updated = current.filter((video) => video.id !== result.id)
+      resultsRef.current = updated
+      return updated
+    })
   }
 
   function toggleTruck() {
@@ -130,8 +142,25 @@ export default function Page() {
 
   function startVideoPlayback() {
     if (!playing) setPlaying(true)
-    videoRef.current?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*')
+    const player = videoRef.current?.contentWindow
+    player?.postMessage(JSON.stringify({ event: 'listening', id: '1', channel: 'channel' }), '*')
+    player?.postMessage(JSON.stringify({ event: 'command', func: 'addEventListener', args: ['onStateChange'] }), '*')
+    player?.postMessage(JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*')
   }
+
+  useEffect(() => {
+    const handleYouTubeMessage = (event: MessageEvent) => {
+      if (!event.origin.includes('youtube.com')) return
+      let message: { event?: string; info?: number }
+      try { message = typeof event.data === 'string' ? JSON.parse(event.data) : event.data } catch { return }
+      if (message.event !== 'onStateChange' || message.info !== 0) return
+      const nextVideo = resultsRef.current[0]
+      if (nextVideo && nextVideo.id !== selectedRef.current?.id) playResult(nextVideo)
+      else setPlaying(false)
+    }
+    window.addEventListener('message', handleYouTubeMessage)
+    return () => window.removeEventListener('message', handleYouTubeMessage)
+  }, [])
 
   useEffect(() => () => {
     truckNodesRef.current.forEach(({ source }) => {
