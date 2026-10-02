@@ -235,18 +235,27 @@ export default function Page() {
     setTruckPlaying(true)
   }
 
+  function sendPlayerCommand(func: 'playVideo' | 'pauseVideo') {
+    const player = videoRef.current?.contentWindow
+    if (!player) return
+    player.postMessage(JSON.stringify({ event: 'command', func, args: [] }), '*')
+  }
+
   function togglePlayback() {
     const next = !playing
     setPlaying(next)
-    videoRef.current?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: next ? 'playVideo' : 'pauseVideo', args: [] }), '*')
+    sendPlayerCommand(next ? 'playVideo' : 'pauseVideo')
   }
 
   function startVideoPlayback() {
     if (!playing) setPlaying(true)
     const player = videoRef.current?.contentWindow
-    player?.postMessage(JSON.stringify({ event: 'listening', id: '1', channel: 'channel' }), '*')
-    player?.postMessage(JSON.stringify({ event: 'command', func: 'addEventListener', args: ['onStateChange'] }), '*')
-    player?.postMessage(JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*')
+    if (!player) return
+    player.postMessage(JSON.stringify({ event: 'listening', id: '1', channel: 'channel' }), '*')
+    player.postMessage(JSON.stringify({ event: 'command', func: 'addEventListener', args: ['onStateChange'] }), '*')
+    // The iframe can finish loading before the YouTube player API is ready.
+    // Send the command again after the API has initialized so the play button is reliable.
+    window.setTimeout(() => sendPlayerCommand('playVideo'), 300)
   }
 
   useEffect(() => {
