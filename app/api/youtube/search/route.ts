@@ -8,7 +8,11 @@ export async function GET(request: Request) {
   if (!apiKey) return NextResponse.json({ error: 'YouTube search is not configured. Add YOUTUBE_API_KEY in the project Vars.' }, { status: 503 })
 
   const params = new URLSearchParams({ part: 'snippet', q: query, type: 'video', maxResults: '8', videoEmbeddable: 'true', key: apiKey })
-  const response = await fetch(`https://www.googleapis.com/youtube/v3/search?${params.toString()}`, { next: { revalidate: 60 } })
+  const referer = request.headers.get('referer') ?? request.url
+  const response = await fetch(`https://www.googleapis.com/youtube/v3/search?${params.toString()}`, {
+    headers: { Referer: referer },
+    next: { revalidate: 60 },
+  })
   const data = await response.json()
 
   if (!response.ok) return NextResponse.json({ error: data.error?.message ?? 'YouTube search failed.' }, { status: response.status })
