@@ -345,8 +345,9 @@ export default function Page() {
 
       <section ref={displayRef} className={`youtube-display ${selected ? 'has-video' : ''}`}>
         {selected ? <>
-          <div className="display-title"><div><span>NOW PLAYING</span><h2>{selected.title}</h2><p>{selected.channel}</p></div><nav className="video-navigation" aria-label="Video navigation"><button type="button" onClick={playPreviousVideo} disabled={historyRef.current.length === 0} aria-label="Previous video" title="Previous video"><ChevronLeft size={20} /></button><button type="button" onClick={playNextVideo} disabled={results.length === 0} aria-label="Next video" title="Next video"><ChevronRight size={20} /></button></nav></div>
+          <div className="display-title"><div><span>NOW PLAYING</span><h2>{selected.title}</h2><p>{selected.channel}</p></div></div>
           <div className="youtube-video"><iframe ref={videoRef} onLoad={startVideoPlayback} src={`https://www.youtube.com/embed/${selected.id}?enablejsapi=1&autoplay=1&origin=${typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : ''}&rel=0`} title={selected.title} allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen /></div>
+          <nav className="video-navigation" aria-label="Video navigation"><button type="button" onClick={playPreviousVideo} disabled={historyRef.current.length === 0} aria-label="Previous video"><ChevronLeft size={18} /> Previous</button><button type="button" onClick={playNextVideo} disabled={results.length === 0} aria-label="Next video">Next <ChevronRight size={18} /></button></nav>
         </> : <div className="empty-display"><div className="empty-icon"><Music2 size={28} /></div><h2>Your next song lives here</h2><p>Search above to start listening</p></div>}
       </section>
 
