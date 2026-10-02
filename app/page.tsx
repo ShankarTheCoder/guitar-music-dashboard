@@ -14,7 +14,7 @@ export default function Page() {
   const [playing, setPlaying] = useState(false)
   const [truckPlaying, setTruckPlaying] = useState(false)
   const videoRef = useRef<HTMLIFrameElement>(null)
-  const truckTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const truckNodesRef = useRef<{ source: AudioScheduledSourceNode; gain: GainNode }[]>([])
   const audioContextRef = useRef<AudioContext | null>(null)
 
   async function searchYouTube(event: React.FormEvent) {
@@ -47,70 +47,54 @@ export default function Page() {
     setResults([])
   }
 
-  function playTruckSound() {
+  function toggleTruck() {
     const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
     if (!AudioContextClass) return
     const context = audioContextRef.current ?? new AudioContextClass()
     audioContextRef.current = context
-    if (context.state === 'suspended') void context.resume()
 
-    const now = context.currentTime
-    const master = context.createGain()
-    const tone = context.createBiquadFilter()
-    const body = context.createBiquadFilter()
-    tone.type = 'lowpass'
-    tone.frequency.setValueAtTime(4200, now)
-    tone.Q.value = 0.45
-    body.type = 'peaking'
-    body.frequency.value = 180
-    body.Q.value = 0.8
-    body.gain.value = 3
-    master.gain.setValueAtTime(0.0001, now)
-    master.gain.exponentialRampToValueAtTime(0.32, now + 0.025)
-    master.gain.exponentialRampToValueAtTime(0.0001, now + 2.1)
-    tone.connect(body).connect(master).connect(context.destination)
-
-    const horn = context.createOscillator()
-    const hornHarmonic = context.createOscillator()
-    const engine = context.createOscillator()
-    const hornGain = context.createGain()
-    const engineGain = context.createGain()
-    horn.type = 'sawtooth'
-    hornHarmonic.type = 'square'
-    engine.type = 'sawtooth'
-    horn.frequency.setValueAtTime(330, now)
-    horn.frequency.exponentialRampToValueAtTime(245, now + 0.7)
-    hornHarmonic.frequency.setValueAtTime(165, now)
-    engine.frequency.setValueAtTime(58, now)
-    engine.frequency.linearRampToValueAtTime(72, now + 1.8)
-    hornGain.gain.setValueAtTime(0.0001, now)
-    hornGain.gain.exponentialRampToValueAtTime(0.16, now + 0.04)
-    hornGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.4)
-    engineGain.gain.setValueAtTime(0.0001, now)
-    engineGain.gain.exponentialRampToValueAtTime(0.22, now + 0.12)
-    engineGain.gain.exponentialRampToValueAtTime(0.0001, now + 2.05)
-    horn.connect(hornGain)
-    hornHarmonic.connect(hornGain)
-    engine.connect(engineGain)
-    hornGain.connect(tone)
-    engineGain.connect(body)
-    horn.start(now)
-    hornHarmonic.start(now)
-    engine.start(now)
-    horn.stop(now + 1.5)
-    hornHarmonic.stop(now + 1.5)
-    engine.stop(now + 2.1)
-  }
-
-  function toggleTruck() {
     if (truckPlaying) {
-      if (truckTimerRef.current) clearInterval(truckTimerRef.current)
-      truckTimerRef.current = null
+      const now = context.currentTime
+      truckNodesRef.current.forEach(({ gain }) => {
+        gain.gain.cancelScheduledValues(now)
+        gain.gain.setTargetAtTime(0.0001, now, 0.08)
+      })
+      truckNodesRef.current.forEach(({ source }) => {
+        try { source.stop(now + 0.35) } catch { /* already stopped */ }
+      })
+      truckNodesRef.current = []
       setTruckPlaying(false)
       return
     }
-    playTruckSound()
-    truckTimerRef.current = setInterval(playTruckSound, 2200)
+
+    if (context.state === 'suspended') void context.resume()
+    const now = context.currentTime
+    const master = context.createGain()
+    const rumble = context.createBiquadFilter()
+    rumble.type = 'lowpass'
+    rumble.frequency.value = 520
+    master.gain.value = 0.16
+    rumble.connect(master).connect(context.destination)
+
+    const engine = context.createOscillator()
+    const engineGain = context.createGain()
+    engine.type = 'sawtooth'
+    engine.frequency.setValueAtTime(46, now)
+    engine.frequency.linearRampToValueAtTime(61, now + 2.5)
+    engineGain.gain.value = 0.7
+    engine.connect(engineGain).connect(rumble)
+
+    const diesel = context.createOscillator()
+    const dieselGain = context.createGain()
+    diesel.type = 'square'
+    diesel.frequency.setValueAtTime(92, now)
+    diesel.frequency.linearRampToValueAtTime(122, now + 2.5)
+    dieselGain.gain.value = 0.12
+    diesel.connect(dieselGain).connect(rumble)
+
+    engine.start(now)
+    diesel.start(now)
+    truckNodesRef.current = [{ source: engine, gain: master }, { source: diesel, gain: master }]
     setTruckPlaying(true)
   }
 
@@ -121,7 +105,9 @@ export default function Page() {
   }
 
   useEffect(() => () => {
-    if (truckTimerRef.current) clearInterval(truckTimerRef.current)
+    truckNodesRef.current.forEach(({ source }) => {
+      try { source.stop() } catch { /* already stopped */ }
+    })
     void audioContextRef.current?.close()
   }, [])
 
