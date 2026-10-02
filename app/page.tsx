@@ -82,6 +82,12 @@ export default function Page() {
     recognitionRef.current?.stop()
     setListening(false)
     setQuery('')
+    setResults([])
+    resultsRef.current = []
+    setNextPageToken(null)
+    setSelected(null)
+    selectedRef.current = null
+    setPlaying(false)
     setError('')
   }
 
@@ -251,7 +257,7 @@ export default function Page() {
           <form className="youtube-search" onSubmit={searchYouTube}>
             <Search size={20} aria-hidden="true" />
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search any song on YouTube" aria-label="Search any song on YouTube" />
-            <button className="search-action search-clear" type="button" onClick={clearSearch} aria-label="Clear search" disabled={!query} title="Clear search"><X size={18} /></button>
+            <button className="search-action search-clear" type="button" onClick={clearSearch} aria-label="Clear search" title="Clear search"><X size={18} /></button>
             <button className={`search-action search-voice ${listening ? 'is-listening' : ''}`} type="button" onClick={toggleVoiceSearch} aria-label={listening ? 'Stop voice search' : 'Search by voice'} aria-pressed={listening} title={listening ? 'Stop voice search' : 'Search by voice'}><Mic size={18} /></button>
             <button className="search-submit" type="submit" disabled={loading || !query.trim()}>{loading ? <LoaderCircle size={18} className="spin" /> : 'Search'}</button>
           </form>
