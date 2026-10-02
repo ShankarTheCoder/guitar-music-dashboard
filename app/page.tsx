@@ -8,7 +8,6 @@ type Result = { id: string; title: string; channel: string; thumbnail: string }
 export default function Page() {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<Result[]>([])
-  const [relatedVideos, setRelatedVideos] = useState<Result[]>([])
   const [selected, setSelected] = useState<Result | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -35,8 +34,7 @@ export default function Page() {
         thumbnail: item.snippet.thumbnails?.medium?.url ?? '',
       }))
       setResults(videos)
-      setRelatedVideos(videos)
-    } catch (searchError) {
+        } catch (searchError) {
       setResults([])
       setError(searchError instanceof Error ? searchError.message : 'Search failed')
     } finally {
@@ -47,8 +45,7 @@ export default function Page() {
   function playResult(result: Result) {
     setSelected(result)
     setPlaying(true)
-    setRelatedVideos((current) => current.filter((video) => video.id !== result.id))
-    setResults((current) => current.filter((video) => video.id !== result.id))
+      setResults((current) => current.filter((video) => video.id !== result.id))
   }
 
   function toggleTruck() {
@@ -151,13 +148,7 @@ export default function Page() {
         </> : <div className="empty-display"><div className="empty-icon"><Music2 size={28} /></div><h2>Your next song lives here</h2><p>Search above to start listening</p></div>}
       </section>
 
-      {selected && relatedVideos.length > 0 && <section className="youtube-results related-videos" aria-label="Related videos">
-        <div className="results-heading"><span>RELATED VIDEOS</span><strong>{relatedVideos.length} more to explore</strong></div>
-        <div className="results-grid">{relatedVideos.slice(0, 12).map((result) => <button className="youtube-result" key={result.id} onClick={() => playResult(result)}>
-          <span className="result-thumbnail">{result.thumbnail && <img src={result.thumbnail} alt="" />}<i><Play size={15} fill="currentColor" /></i></span>
-          <span><strong>{result.title}</strong><small>{result.channel}</small></span>
-        </button>)}</div>
-      </section>}
+
       <footer className="youtube-footer">Powered by YouTube <span>•</span> Made for practice</footer>
     </main>
   )
