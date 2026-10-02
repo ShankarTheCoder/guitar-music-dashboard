@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { LoaderCircle, Mic, Music2, Pause, Play, Search, Truck, X } from 'lucide-react'
 
-type Result = { id: string; title: string; channel: string; thumbnail: string; videoType: 'Short' | 'Long video' | 'Video' }
+type Result = { id: string; title: string; channel: string; thumbnail: string; duration: string }
 
 export default function Page() {
   const [query, setQuery] = useState('')
@@ -131,12 +131,12 @@ export default function Page() {
       const response = await fetch(`/api/youtube/search?q=${encodeURIComponent(value)}`)
       const data = await response.json()
       if (!response.ok) throw new Error(data.error ?? 'Search failed')
-      const videos = data.items.map((item: { id: { videoId: string }; videoType?: Result['videoType']; snippet: { title: string; channelTitle: string; thumbnails?: { medium?: { url: string } } } }) => ({
+      const videos = data.items.map((item: { id: { videoId: string }; duration?: string; snippet: { title: string; channelTitle: string; thumbnails?: { medium?: { url: string } } } }) => ({
         id: item.id.videoId,
         title: item.snippet.title,
         channel: item.snippet.channelTitle,
         thumbnail: item.snippet.thumbnails?.medium?.url ?? '',
-        videoType: item.videoType ?? 'Video',
+        duration: item.duration ?? '—',
       }))
       setResults(videos)
       resultsRef.current = videos
@@ -157,7 +157,7 @@ export default function Page() {
       const response = await fetch(`/api/youtube/search?q=${encodeURIComponent(query.trim())}&pageToken=${encodeURIComponent(nextPageToken)}`)
       const data = await response.json()
       if (!response.ok) throw new Error(data.error ?? 'Could not load more videos')
-      const videos: Result[] = data.items.map((item: { id: { videoId: string }; videoType?: Result['videoType']; snippet: { title: string; channelTitle: string; thumbnails?: { medium?: { url: string } } } }) => ({
+      const videos: Result[] = data.items.map((item: { id: { videoId: string }; duration?: string; snippet: { title: string; channelTitle: string; thumbnails?: { medium?: { url: string } } } }) => ({
         id: item.id.videoId,
         title: item.snippet.title,
         channel: item.snippet.channelTitle,
@@ -315,7 +315,7 @@ export default function Page() {
       {results.length > 0 && <section className="youtube-results" aria-label="YouTube search results">
         <div className="results-heading"><span>SEARCH RESULTS</span><strong>{results.length} videos</strong></div>
         <div className="results-grid">{results.map((result) => <button className="youtube-result" key={result.id} onClick={() => playResult(result)}>
-          <span className="result-thumbnail">{result.thumbnail && <img src={result.thumbnail} alt="" />}<i><Play size={15} fill="currentColor" /></i><b className="result-type">{result.videoType}</b></span>
+          <span className="result-thumbnail">{result.thumbnail && <img src={result.thumbnail} alt="" />}<i><Play size={15} fill="currentColor" /></i><b className="result-duration">{result.duration}</b></span>
           <span><strong>{result.title}</strong><small>{result.channel}</small></span>
         </button>)}</div>
         {nextPageToken && <button className="load-more-button" type="button" onClick={refreshVideos} disabled={loading}>{loading ? <><LoaderCircle size={16} className="spin" /> Loading more</> : 'Refresh for more videos'}</button>}
