@@ -283,7 +283,29 @@ export default function Page() {
   useEffect(() => {
     if (!selected) return
     displayRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }, [selected])
+
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: selected.title,
+        artist: selected.channel,
+        album: 'GuitarPlay',
+      })
+      navigator.mediaSession.setActionHandler('nexttrack', playNextVideo)
+      navigator.mediaSession.setActionHandler('previoustrack', playPreviousVideo)
+      navigator.mediaSession.setActionHandler('play', () => sendPlayerCommand('playVideo'))
+      navigator.mediaSession.setActionHandler('pause', () => sendPlayerCommand('pauseVideo'))
+      navigator.mediaSession.playbackState = playing ? 'playing' : 'paused'
+    }
+
+    return () => {
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.setActionHandler('nexttrack', null)
+        navigator.mediaSession.setActionHandler('previoustrack', null)
+        navigator.mediaSession.setActionHandler('play', null)
+        navigator.mediaSession.setActionHandler('pause', null)
+      }
+    }
+  }, [selected, playing])
 
   useEffect(() => {
     const handleYouTubeMessage = (event: MessageEvent) => {
