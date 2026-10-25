@@ -238,7 +238,7 @@ export default function Page() {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: selected.title,
         artist: selected.channel,
-        album: 'GuitarPlay',
+        album: 'PlayTube',
       })
       navigator.mediaSession.setActionHandler('nexttrack', playNextVideo)
       navigator.mediaSession.setActionHandler('previoustrack', playPreviousVideo)
@@ -276,7 +276,7 @@ export default function Page() {
       <div className="youtube-glow youtube-glow-one" />
       <div className="youtube-glow youtube-glow-two" />
       <header className="youtube-header">
-        <div className="youtube-brand"><span><Music2 size={18} /></span><strong>guitar<span>play</span></strong></div>
+        <div className="youtube-brand"><span><Music2 size={18} /></span><strong>Play<span>Tube</span></strong></div>
         <p>Search. Play. Practice.</p>
       </header>
 
