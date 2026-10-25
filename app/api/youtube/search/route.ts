@@ -13,11 +13,6 @@ type Entry = {
   description: string
 }
 
-const FILLER = new Set([
-  'new', 'latest', 'recent', 'newest', 'trending', 'song', 'songs', 'video', 'videos',
-  'official', 'lyrics', 'lyric', 'audio', 'full', 'hd', '4k', 'music', 'hindi', 'punjabi',
-  'bhojpuri', 'maithili', 'old', 'classic', 'retro', 'evergreen', '90s', '80s',
-])
 const TITLE_FILLER = new Set([
   'official', 'video', 'videos', 'song', 'songs', 'lyrics', 'lyric', 'audio', 'full', 'hd', '4k', 'new', 'latest',
 ])
@@ -42,12 +37,6 @@ export async function GET(request: Request) {
 
   const referer = request.headers.get('referer') ?? request.url
   const pageToken = params0.get('pageToken')?.trim()
-
-  // Content words of the query, minus generic fillers. Used to find the
-  // artist's own channel ("new honey singh song" -> honey, singh). Needs at
-  // least two words, otherwise any big channel could match by accident.
-  const contentWords = wordsOf(query ?? '').filter((w) => w.length > 1 && !FILLER.has(w) && !isYear(w))
-  const useArtist = contentWords.length >= 2 && !channelId
 
   const yt = async (path: string, params: URLSearchParams) => {
     const response = await fetch(`https://www.googleapis.com/youtube/v3/${path}?${params}`, {
@@ -92,117 +81,44 @@ export async function GET(request: Request) {
     return out
   }
 
-  const collectPage = async (searchParams: URLSearchParams): Promise<Entry[]> => {
-    const data = await yt('search', searchParams)
-    return enrich(data.items)
-  }
-
-  // General keyword search, newest first. When an artist lookup will run,
-  // fewer general candidates are needed because the official videos lead.
-  const generalCap = useArtist ? 12 : 24
-  const general: Entry[] = []
+  // Search order matches YouTube itself: a text search uses relevance
+  // order, exactly like youtube.com/results. A channel page uses newest
+  // first, like a channel's Videos tab.
+  const order = channelId ? 'date' : 'relevance'
+  const collected: Entry[] = []
   let currentPageToken = pageToken
   let lastPageToken: string | null = null
-  for (let page = 0; page < 3 && general.length < generalCap; page += 1) {
-    const params = new URLSearchParams({ part: 'snippet', type: 'video', maxResults: '50', order: 'date', videoEmbeddable: 'true', key: apiKey })
+  for (let page = 0; page < 3 && collected.length < 24; page += 1) {
+    const params = new URLSearchParams({ part: 'snippet', type: 'video', maxResults: '50', order, videoEmbeddable: 'true', key: apiKey })
     if (query) params.set('q', query)
     if (channelId) params.set('channelId', channelId)
     if (currentPageToken) params.set('pageToken', currentPageToken)
     const data = await yt('search', params)
-    general.push(...(await enrich(data.items)))
+    collected.push(...(await enrich(data.items)))
     lastPageToken = data.nextPageToken ?? null
     if (!lastPageToken) break
     currentPageToken = lastPageToken
   }
 
-  // Subscriber counts for the general results, so big label channels
-  // (T-Series and the like) can outrank small copy channels.
-  const subs = new Map<string, number>()
-  try {
-    const channelIds = [...new Set(general.map((e) => e.item.snippet?.channelId).filter(Boolean))] as string[]
-    if (channelIds.length > 0) {
-      const params = new URLSearchParams({ part: 'statistics', id: channelIds.slice(0, 50).join(','), key: apiKey })
-      const data = await yt('channels', params)
-      for (const item of data.items ?? []) subs.set(item.id, Number(item.statistics?.subscriberCount ?? 0))
-    }
-  } catch { /* subscriber data is only a ranking hint */ }
-
-  // Find the artist's own channel: channel search for the content words,
-  // keep channels whose name contains at least two of them, and pick the
-  // one with the most subscribers (the official channel dwarfs fan copies).
-  let artistChannelId: string | null = null
-  if (useArtist) {
-    try {
-      const params = new URLSearchParams({ part: 'snippet', type: 'channel', q: contentWords.join(' '), maxResults: '5', key: apiKey })
-      const data = await yt('search', params)
-      const candidates = ((data.items ?? []) as { id?: { channelId?: string }; snippet?: { channelTitle?: string } }[])
-        .filter((c) => {
-          if (!c.id?.channelId) return false
-          const nameWords = new Set(wordsOf(c.snippet?.channelTitle ?? ''))
-          return contentWords.filter((w) => nameWords.has(w)).length >= 2
-        })
-      if (candidates.length > 0) {
-        let best: string | null = null
-        let bestSubs = -1
-        try {
-          const ids = candidates.map((c) => c.id!.channelId!).join(',')
-          const params2 = new URLSearchParams({ part: 'statistics', id: ids, key: apiKey })
-          const data2 = await yt('channels', params2)
-          for (const item of data2.items ?? []) {
-            const n = Number(item.statistics?.subscriberCount ?? 0)
-            if (n > bestSubs) { bestSubs = n; best = item.id }
-          }
-        } catch { /* fall through to the top candidate */ }
-        artistChannelId = best ?? candidates[0].id!.channelId!
-      }
-    } catch { /* no artist channel: general results still apply */ }
-  }
-
-  // Official videos, in two parts: the channel's videos matching this exact
-  // query (finds a specific song like Blue Eyes), then the channel's latest
-  // uploads (finds a brand-new song like So Swaezy).
-  let artistQuery: Entry[] = []
-  let artistLatest: Entry[] = []
-  if (artistChannelId && query) {
-    try {
-      const [a, b] = await Promise.all([
-        collectPage(new URLSearchParams({ part: 'snippet', type: 'video', channelId: artistChannelId, q: query, order: 'relevance', maxResults: '25', videoEmbeddable: 'true', key: apiKey })),
-        collectPage(new URLSearchParams({ part: 'snippet', type: 'video', channelId: artistChannelId, order: 'date', maxResults: '25', videoEmbeddable: 'true', key: apiKey })),
-      ])
-      artistQuery = a
-      artistLatest = b.slice(0, 10)
-    } catch { /* official tiers are optional; general results still apply */ }
-  }
-
-  // Final ranking. First occurrence wins, so an official video can never be
-  // pushed down by its own copies: same video id, or same song title once
-  // generic words are stripped, is kept only once.
+  // Collapse exact re-uploads of the same song title (same words once
+  // generic words are stripped), keeping the first — most relevant — copy.
+  // Versions with different words (AADAT vs AADAT 8K, So Swaezy vs its
+  // teaser) are different entries on YouTube too, so both stay.
   const titleKey = (title: string) => {
     const key = wordsOf(title).filter((w) => !TITLE_FILLER.has(w) && !isYear(w)).join(' ')
     return key || title.toLocaleLowerCase()
   }
-  const nameMatches = (channelTitle: string) => {
-    const nameWords = new Set(wordsOf(channelTitle))
-    return contentWords.filter((w) => nameWords.has(w)).length >= 2
-  }
   const seenIds = new Set<string>()
   const seenKeys = new Set<string>()
   const ranked: Entry[] = []
-  const pushTier = (entries: Entry[]) => {
-    for (const entry of entries) {
-      const id = entry.item.id.videoId
-      const key = titleKey(entry.item.snippet?.title ?? '')
-      if (seenIds.has(id) || seenKeys.has(key)) continue
-      seenIds.add(id)
-      seenKeys.add(key)
-      ranked.push(entry)
-    }
+  for (const entry of collected) {
+    const id = entry.item.id.videoId
+    const key = titleKey(entry.item.snippet?.title ?? '')
+    if (seenIds.has(id) || seenKeys.has(key)) continue
+    seenIds.add(id)
+    seenKeys.add(key)
+    ranked.push(entry)
   }
-  pushTier(artistQuery)
-  pushTier(artistLatest)
-  pushTier(general.filter((e) => nameMatches(e.item.snippet?.channelTitle ?? '')))
-  pushTier(general.filter((e) => (subs.get(e.item.snippet?.channelId ?? '') ?? 0) >= 1_000_000))
-  pushTier(general)
 
   function formatDuration(totalSeconds: number) {
     const hours = Math.floor(totalSeconds / 3600)
