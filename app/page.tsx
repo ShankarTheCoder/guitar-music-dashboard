@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import {
-  Bell, Bookmark, ChevronLeft, ChevronRight, Clock, Flame, History, Home, LoaderCircle,
+  Bell, Bookmark, ChevronLeft, ChevronRight, ChevronUp, Clock, Flame, History, Home, LoaderCircle,
   Menu, MessageSquare, Mic, Music2, Pause, Play, Search, Share2, SkipBack, SkipForward,
   ThumbsUp, Trash2, Users, X,
 } from 'lucide-react'
@@ -68,7 +68,11 @@ function formatDate(publishedAt?: string) {
 export default function Page() {
   const [query, setQuery] = useState('')
   const [queue, setQueue] = useState<Result[]>([])
-  const [currentIndex, setCurrentIndex] = useState(-1)
+  // Player state is separate from the feed: the feed list (queue) can be
+  // searched and browsed while a song keeps playing in the mini-player.
+  const [playerQueue, setPlayerQueue] = useState<Result[]>([])
+  const [playerIndex, setPlayerIndex] = useState(-1)
+  const [minimized, setMinimized] = useState(false)
   const [nextPageToken, setNextPageToken] = useState<string | null>(null)
   // The exact list "Load more" continues: the search or channel that produced
   // the current feed. (Using the search box text here would be wrong — the
@@ -102,26 +106,30 @@ export default function Page() {
   const videoRef = useRef<HTMLIFrameElement>(null)
   const watchRef = useRef<HTMLElement>(null)
   const queueRef = useRef<Result[]>([])
-  const indexRef = useRef(-1)
+  const playerQueueRef = useRef<Result[]>([])
+  const playerIndexRef = useRef(-1)
   const historyRef = useRef<Result[]>([])
   const likedRef = useRef<Result[]>([])
   const watchLaterRef = useRef<Result[]>([])
   const subsRef = useRef<Channel[]>([])
+  // List the playing video came from, so Back returns there.
+  const backViewRef = useRef<View>('home')
+  const minimizedRef = useRef(false)
+  const playerVideoRef = useRef<Result | null>(null)
+  const sidebarOpenRef = useRef(false)
 
-  const selected = currentIndex >= 0 ? queue[currentIndex] : null
-  const upNext = selected ? queue.slice(currentIndex + 1) : []
-  const canPrev = currentIndex > 0
-  const canNext = selected != null && currentIndex < queue.length - 1
-  const isLiked = selected ? liked.some((v) => v.id === selected.id) : false
-  const isSavedLater = selected ? watchLater.some((v) => v.id === selected.id) : false
-  const isSubscribed = selected && selected.channelId ? subscriptions.some((c) => c.id === selected.channelId) : false
-  const selectedChannel: Channel | null = selected && selected.channelId ? { id: selected.channelId, name: selected.channel } : null
+  const playerVideo = playerIndex >= 0 ? playerQueue[playerIndex] : null
+  const upNext = playerVideo ? playerQueue.slice(playerIndex + 1) : []
+  const canPrev = playerIndex > 0
+  const canNext = playerVideo != null && playerIndex < playerQueue.length - 1
+  const isLiked = playerVideo ? liked.some((v) => v.id === playerVideo.id) : false
+  const isSavedLater = playerVideo ? watchLater.some((v) => v.id === playerVideo.id) : false
+  const isSubscribed = playerVideo && playerVideo.channelId ? subscriptions.some((c) => c.id === playerVideo.channelId) : false
+  const selectedChannel: Channel | null = playerVideo && playerVideo.channelId ? { id: playerVideo.channelId, name: playerVideo.channel } : null
 
-  function syncQueue(list: Result[], index: number) {
+  function syncQueue(list: Result[]) {
     queueRef.current = list
-    indexRef.current = index
     setQueue(list)
-    setCurrentIndex(index)
   }
 
   function rememberPlayed(video: Result) {
@@ -132,10 +140,10 @@ export default function Page() {
   }
 
   function playAt(index: number) {
-    const video = queueRef.current[index]
+    const video = playerQueueRef.current[index]
     if (!video) return
-    indexRef.current = index
-    setCurrentIndex(index)
+    playerIndexRef.current = index
+    setPlayerIndex(index)
     setPlaying(true)
     setView('home')
     setDescExpanded(false)
@@ -145,17 +153,49 @@ export default function Page() {
   function playVideo(video: Result, list: Result[]) {
     const index = list.findIndex((v) => v.id === video.id)
     if (index < 0) return
-    queueRef.current = list
-    setQueue(list)
+    backViewRef.current = view
+    playerQueueRef.current = list
+    setPlayerQueue(list)
+    minimizedRef.current = false
+    setMinimized(false)
     playAt(index)
   }
 
   function playNext() {
-    if (indexRef.current < queueRef.current.length - 1) playAt(indexRef.current + 1)
+    if (playerIndexRef.current < playerQueueRef.current.length - 1) playAt(playerIndexRef.current + 1)
   }
 
   function playPrev() {
-    if (indexRef.current > 0) playAt(indexRef.current - 1)
+    if (playerIndexRef.current > 0) playAt(playerIndexRef.current - 1)
+  }
+
+  function minimizePlayer() {
+    minimizedRef.current = true
+    setMinimized(true)
+  }
+
+  // Back from the watch view: the song keeps playing in the mini-player
+  // and the user returns to the list the video came from, free to search
+  // another song.
+  function exitWatch() {
+    minimizePlayer()
+    setView(backViewRef.current ?? 'home')
+  }
+
+  function expandPlayer() {
+    minimizedRef.current = false
+    setMinimized(false)
+    setView('home')
+  }
+
+  function closePlayer() {
+    playerQueueRef.current = []
+    playerIndexRef.current = -1
+    setPlayerQueue([])
+    setPlayerIndex(-1)
+    setPlaying(false)
+    minimizedRef.current = false
+    setMinimized(false)
   }
 
   function toggleInList(list: Result[], ref: { current: Result[] }, set: (v: Result[]) => void, key: string, video: Result) {
@@ -166,11 +206,11 @@ export default function Page() {
   }
 
   function toggleLike() {
-    if (selected) toggleInList(liked, likedRef, setLiked, LIKED_KEY, selected)
+    if (playerVideo) toggleInList(liked, likedRef, setLiked, LIKED_KEY, playerVideo)
   }
 
   function toggleWatchLater() {
-    if (selected) toggleInList(watchLater, watchLaterRef, setWatchLater, WATCH_LATER_KEY, selected)
+    if (playerVideo) toggleInList(watchLater, watchLaterRef, setWatchLater, WATCH_LATER_KEY, playerVideo)
   }
 
   function toggleSubscribe(channel: Channel | null) {
@@ -184,10 +224,10 @@ export default function Page() {
   }
 
   async function shareVideo() {
-    if (!selected) return
-    const url = `https://www.youtube.com/watch?v=${selected.id}`
+    if (!playerVideo) return
+    const url = `https://www.youtube.com/watch?v=${playerVideo.id}`
     try {
-      if (navigator.share) await navigator.share({ title: selected.title, url })
+      if (navigator.share) await navigator.share({ title: playerVideo.title, url })
       else {
         await navigator.clipboard.writeText(url)
         setShareNote('Link copied')
@@ -212,6 +252,7 @@ export default function Page() {
   async function runSearch(searchText: string) {
     const value = searchText.trim()
     if (!value) return
+    if (playerVideo) minimizePlayer()
     setLoading(true)
     setError('')
     setView('home')
@@ -219,12 +260,11 @@ export default function Page() {
       const response = await fetch(`/api/youtube/search?q=${encodeURIComponent(value)}`)
       const data = await response.json()
       if (!response.ok) throw new Error(data.error ?? 'Search failed')
-      syncQueue((data.items ?? []).map(normalize), -1)
+      syncQueue((data.items ?? []).map(normalize))
       setNextPageToken(data.nextPageToken ?? null)
       setMoreBase(`/api/youtube/search?q=${encodeURIComponent(value)}`)
-      setPlaying(false)
     } catch (searchError) {
-      syncQueue([], -1)
+      syncQueue([])
       setMoreBase(null)
       setError(searchError instanceof Error ? searchError.message : 'Search failed')
     } finally {
@@ -257,6 +297,7 @@ export default function Page() {
   }
 
   async function loadTrending() {
+    if (playerVideo) minimizePlayer()
     setLoading(true)
     setError('')
     setView('trending')
@@ -264,12 +305,11 @@ export default function Page() {
       const response = await fetch('/api/youtube/trending')
       const data = await response.json()
       if (!response.ok) throw new Error(data.error ?? 'Could not load trending videos')
-      syncQueue((data.items ?? []).map(normalize), -1)
+      syncQueue((data.items ?? []).map(normalize))
       setNextPageToken(null)
       setMoreBase(null)
-      setPlaying(false)
     } catch (trendError) {
-      syncQueue([], -1)
+      syncQueue([])
       setError(trendError instanceof Error ? trendError.message : 'Could not load trending videos')
     } finally {
       setLoading(false)
@@ -278,6 +318,7 @@ export default function Page() {
 
   async function openChannel(channel: Channel) {
     if (!channel.id) return
+    if (playerVideo) minimizePlayer()
     setChannelView(channel)
     setView('channel')
     setLoading(true)
@@ -286,12 +327,11 @@ export default function Page() {
       const response = await fetch(`/api/youtube/search?channelId=${encodeURIComponent(channel.id)}`)
       const data = await response.json()
       if (!response.ok) throw new Error(data.error ?? 'Could not load channel videos')
-      syncQueue((data.items ?? []).map(normalize), -1)
+      syncQueue((data.items ?? []).map(normalize))
       setNextPageToken(data.nextPageToken ?? null)
       setMoreBase(`/api/youtube/search?channelId=${encodeURIComponent(channel.id)}`)
-      setPlaying(false)
     } catch (channelError) {
-      syncQueue([], -1)
+      syncQueue([])
       setMoreBase(null)
       setError(channelError instanceof Error ? channelError.message : 'Could not load channel videos')
     } finally {
@@ -407,10 +447,9 @@ export default function Page() {
     recognitionRef.current?.stop()
     setListening(false)
     setQuery('')
-    syncQueue([], -1)
+    syncQueue([])
     setNextPageToken(null)
     setMoreBase(null)
-    setPlaying(false)
     setError('')
   }
 
@@ -444,7 +483,7 @@ export default function Page() {
   }
 
   function togglePlayPause() {
-    if (!selected) return
+    if (!playerVideo) return
     if (playing) {
       sendPlayerCommand('pauseVideo')
       setPlaying(false)
@@ -468,6 +507,7 @@ export default function Page() {
       counts.set(video.channelId, entry)
     }
     const top = [...counts.entries()].sort((a, b) => b[1].n - a[1].n).slice(0, 3)
+    if (playerVideo) minimizePlayer()
     setLoading(true)
     setError('')
     setView('home')
@@ -494,24 +534,22 @@ export default function Page() {
           round += 1
         }
         if (mixed.length > 0) {
-          syncQueue(mixed, -1)
+          syncQueue(mixed)
           setHomeHead('Recommended for you')
           setNextPageToken(null)
           setMoreBase(null)
-          setPlaying(false)
           return
         }
       }
       const response = await fetch('/api/youtube/trending')
       const data = await response.json()
       if (!response.ok) throw new Error(data.error ?? 'Could not load home feed')
-      syncQueue((data.items as unknown[]).map(normalize), -1)
+      syncQueue((data.items as unknown[]).map(normalize))
       setHomeHead('Trending in India')
       setNextPageToken(null)
       setMoreBase(null)
-      setPlaying(false)
     } catch (homeError) {
-      syncQueue([], -1)
+      syncQueue([])
       setError(homeError instanceof Error ? homeError.message : 'Could not load home feed')
     } finally {
       setLoading(false)
@@ -538,13 +576,13 @@ export default function Page() {
 
   // Comments for the playing video.
   useEffect(() => {
-    if (!selected) {
+    if (!playerVideo) {
       setComments([])
       return
     }
     let cancelled = false
     setCommentsFailed(false)
-    fetch(`/api/youtube/comments?videoId=${encodeURIComponent(selected.id)}`)
+    fetch(`/api/youtube/comments?videoId=${encodeURIComponent(playerVideo.id)}`)
       .then((r) => r.json().then((d) => ({ ok: r.ok, data: d })))
       .then(({ ok, data }) => {
         if (cancelled) return
@@ -553,14 +591,20 @@ export default function Page() {
       })
       .catch(() => { if (!cancelled) setCommentsFailed(true) })
     return () => { cancelled = true }
-  }, [selected])
+  }, [playerVideo])
 
+  // Scroll to the player only when the full watch view opens, never when
+  // it shrinks to the mini-player.
   useEffect(() => {
-    if (selected) watchRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    if ('mediaSession' in navigator && selected) {
+    if (playerVideo && !minimized) watchRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [playerVideo, minimized])
+
+  // MediaSession (headset / notification controls) for the playing video.
+  useEffect(() => {
+    if ('mediaSession' in navigator && playerVideo) {
       navigator.mediaSession.metadata = new MediaMetadata({
-        title: selected.title,
-        artist: selected.channel,
+        title: playerVideo.title,
+        artist: playerVideo.channel,
         album: 'PlayTube',
       })
       navigator.mediaSession.setActionHandler('nexttrack', playNext)
@@ -578,7 +622,28 @@ export default function Page() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected, playing])
+  }, [playerVideo, playing])
+
+  // Phone back button inside the APK (window.__playtubeGoBack): first
+  // press leaves the watch view with the song still playing in the
+  // mini-player, instead of closing the app.
+  useEffect(() => {
+    playerVideoRef.current = playerVideo
+    sidebarOpenRef.current = sidebarOpen
+    minimizedRef.current = minimized
+    ;(window as unknown as { __playtubeGoBack?: () => boolean }).__playtubeGoBack = () => {
+      if (sidebarOpenRef.current) {
+        setSidebarOpen(false)
+        sidebarOpenRef.current = false
+        return true
+      }
+      if (playerVideoRef.current && !minimizedRef.current) {
+        exitWatch()
+        return true
+      }
+      return false
+    }
+  })
 
   useEffect(() => {
     const handleYouTubeMessage = (event: MessageEvent) => {
@@ -586,7 +651,7 @@ export default function Page() {
       let message: { event?: string; info?: number }
       try { message = typeof event.data === 'string' ? JSON.parse(event.data) : event.data } catch { return }
       if (message.event !== 'onStateChange' || message.info !== 0) return
-      if (indexRef.current < queueRef.current.length - 1) playAt(indexRef.current + 1)
+      if (playerIndexRef.current < playerQueueRef.current.length - 1) playAt(playerIndexRef.current + 1)
       else setPlaying(false)
     }
     window.addEventListener('message', handleYouTubeMessage)
@@ -604,6 +669,7 @@ export default function Page() {
   }
 
   function openView(next: View) {
+    if (playerVideo) minimizePlayer()
     setView(next)
     setSidebarOpen(false)
     if (next !== 'channel') setChannelView(null)
@@ -668,27 +734,28 @@ export default function Page() {
 
           {error && <p className="yt-error" role="alert">{error}</p>}
 
-          {view === 'home' && selected && (
-            <section ref={watchRef} className="yt-watch">
+          {playerVideo && (
+            <section ref={watchRef} className={minimized ? 'yt-watch yt-watch-min' : 'yt-watch'}>
               <div className="yt-player-col">
+                <div className="yt-watch-back"><button type="button" onClick={exitWatch}><ChevronLeft size={18} /> Back</button></div>
                 <div className="yt-player">
                   <iframe
                     ref={videoRef}
                     onLoad={startVideoPlayback}
-                    src={`https://www.youtube.com/embed/${selected.id}?enablejsapi=1&autoplay=1&origin=${typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : ''}&rel=0`}
-                    title={selected.title}
+                    src={`https://www.youtube.com/embed/${playerVideo.id}?enablejsapi=1&autoplay=1&origin=${typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : ''}&rel=0`}
+                    title={playerVideo.title}
                     allow="autoplay; encrypted-media; picture-in-picture"
                     allowFullScreen
                   />
                 </div>
-                <h1 className="yt-watch-title">{selected.title}</h1>
+                <h1 className="yt-watch-title">{playerVideo.title}</h1>
                 <div className="yt-channel-row">
-                  <span className="yt-channel-avatar">{(selected.channel || '?').trim().charAt(0).toUpperCase()}</span>
+                  <span className="yt-channel-avatar">{(playerVideo.channel || '?').trim().charAt(0).toUpperCase()}</span>
                   <span className="yt-channel-meta">
                     {selectedChannel
-                      ? <button type="button" onClick={() => openChannel(selectedChannel)}>{selected.channel}</button>
-                      : <strong>{selected.channel}</strong>}
-                    <small>{[formatViews(selected.viewCount), formatDate(selected.publishedAt)].filter(Boolean).join(' • ')}</small>
+                      ? <button type="button" onClick={() => openChannel(selectedChannel)}>{playerVideo.channel}</button>
+                      : <strong>{playerVideo.channel}</strong>}
+                    <small>{[formatViews(playerVideo.viewCount), formatDate(playerVideo.publishedAt)].filter(Boolean).join(' • ')}</small>
                   </span>
                   <button
                     className={`yt-subscribe ${isSubscribed ? 'subscribed' : ''}`}
@@ -697,10 +764,10 @@ export default function Page() {
                     disabled={!selectedChannel}
                   ><Bell size={16} /> {isSubscribed ? 'Subscribed' : 'Subscribe'}</button>
                 </div>
-                {selected.description && (
+                {playerVideo.description && (
                   <div className="yt-desc">
-                    <p>{descExpanded ? selected.description : `${selected.description.slice(0, 200)}${selected.description.length > 200 ? '…' : ''}`}</p>
-                    {selected.description.length > 200 && <button type="button" onClick={() => setDescExpanded((v) => !v)}>{descExpanded ? 'Show less' : '…more'}</button>}
+                    <p>{descExpanded ? playerVideo.description : `${playerVideo.description.slice(0, 200)}${playerVideo.description.length > 200 ? '…' : ''}`}</p>
+                    {playerVideo.description.length > 200 && <button type="button" onClick={() => setDescExpanded((v) => !v)}>{descExpanded ? 'Show less' : '…more'}</button>}
                   </div>
                 )}
                 <div className="yt-watch-actions">
@@ -717,6 +784,11 @@ export default function Page() {
                   <button className={`yt-pill ${isSavedLater ? 'active' : ''}`} type="button" onClick={toggleWatchLater}><Bookmark size={17} /> {isSavedLater ? 'Saved' : 'Watch Later'}</button>
                   <button className="yt-pill" type="button" onClick={shareVideo}><Share2 size={17} /> Share</button>
                   {shareNote && <span className="yt-share-note">{shareNote}</span>}
+                </div>
+                <div className="yt-mini-controls">
+                  <button type="button" onClick={togglePlayPause} aria-label={playing ? 'Pause' : 'Play'}>{playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}</button>
+                  <button type="button" onClick={expandPlayer} aria-label="Expand player"><ChevronUp size={18} /></button>
+                  <button type="button" onClick={closePlayer} aria-label="Stop and close player"><X size={18} /></button>
                 </div>
                 <section className="yt-comments" aria-label="Comments">
                   <h2><MessageSquare size={18} /> Comments</h2>
@@ -740,7 +812,7 @@ export default function Page() {
                 <h2>Up next</h2>
                 {upNext.length === 0 && <p className="yt-empty-note">No more videos in this list. Search for more.</p>}
                 {upNext.map((video) => (
-                  <button className="yt-upnext-row" key={video.id} onClick={() => playVideo(video, queue)}>
+                  <button className="yt-upnext-row" key={video.id} onClick={() => playVideo(video, playerQueue)}>
                     <span className="yt-upnext-thumb">{video.thumbnail && <img src={video.thumbnail} alt="" loading="lazy" />}<b>{video.duration}</b></span>
                     <span><strong>{video.title}</strong><small>{video.channel}</small></span>
                   </button>
@@ -748,8 +820,9 @@ export default function Page() {
               </aside>
             </section>
           )}
+          {playerVideo && minimized && <div className="yt-mini-spacer" />}
 
-          {view === 'home' && !selected && (
+          {view === 'home' && (!playerVideo || minimized) && (
             <section aria-label="Videos">
               {loading && queue.length === 0 && <p className="yt-loading"><LoaderCircle size={20} className="spin" /> Loading videos…</p>}
               {!loading && queue.length === 0 && !error && (
