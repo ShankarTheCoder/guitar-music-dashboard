@@ -9,10 +9,10 @@ export async function GET(request: Request) {
   if (!query && !channelId) return NextResponse.json({ error: 'Search query is required.' }, { status: 400 })
   if (!apiKey) return NextResponse.json({ error: 'YouTube search is not configured.' }, { status: 503 })
 
-  const lowerQuery = (query ?? '').toLocaleLowerCase()
-  const asksForNew = /\b(new|latest|recent|newest|trending|202[4-9]|20[3-9]\d)\b/.test(lowerQuery)
-  const asksForOld = /\b(old|classic|retro|evergreen|90s|80s|2000s|2010s)\b/.test(lowerQuery)
-  const order = channelId && !query ? 'date' : asksForNew && !asksForOld ? 'date' : 'relevance'
+  // Every search is newest-first, and the original wins over copies (see
+  // the ranking below): newest uploads first, videos from the artist's own
+  // channel first, duplicate titles of the same song removed.
+  const order = 'date'
   const pageToken = params0.get('pageToken')?.trim()
   const referer = request.headers.get('referer') ?? request.url
   const collected: Array<{
@@ -25,9 +25,10 @@ export async function GET(request: Request) {
   let currentPageToken = pageToken
   let lastPageToken: string | null = null
 
-  // YouTube can return Shorts mixed into a relevance page. Read a few result pages
-  // server-side so the UI still gets a useful list of full-length videos.
-  for (let page = 0; page < 3 && collected.length < 12; page += 1) {
+  // YouTube can return Shorts mixed into a page. Read a few result pages
+  // server-side so the UI still gets a useful list of full-length videos,
+  // and collect extra candidates so the original can outrank its copies.
+  for (let page = 0; page < 3 && collected.length < 24; page += 1) {
     const params = new URLSearchParams({ part: 'snippet', type: 'video', maxResults: '50', order, videoEmbeddable: 'true', key: apiKey })
     if (query) params.set('q', query)
     if (channelId) params.set('channelId', channelId)
@@ -81,8 +82,49 @@ export async function GET(request: Request) {
       : `${minutes}:${String(seconds).padStart(2, '0')}`
   }
 
+  // Original-first ranking, applied to every search. Artist words are the
+  // query words minus generic fillers ("new honey singh song" -> honey,
+  // singh); a video counts as original-ish when its channel name contains
+  // every artist word ("Yo Yo Honey Singh", "Honey Singh - Topic"). Copies
+  // of the same song (same title once generic words are stripped) collapse
+  // to one entry: official channel wins, then most views, then earliest
+  // upload. The list stays newest-first, with official videos on top.
+  const QUERY_FILLER = new Set(['new', 'latest', 'recent', 'newest', 'trending', 'song', 'songs', 'video', 'videos', 'official', 'lyrics', 'lyric', 'audio', 'full', 'hd', '4k', 'music', 'hindi', 'punjabi', 'bhojpuri', 'maithili', 'old', 'classic', 'retro', 'evergreen', '90s', '80s'])
+  const TITLE_FILLER = new Set(['official', 'video', 'videos', 'song', 'songs', 'lyrics', 'lyric', 'audio', 'full', 'hd', '4k', 'new', 'latest'])
+  const wordsOf = (text: string) => text.toLocaleLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
+  const artistWords = wordsOf(query ?? '').filter((w) => w.length > 1 && !QUERY_FILLER.has(w) && !/^(19|20)\d{2}$/.test(w))
+  const channelIsOfficial = (channelTitle: string) => {
+    if (artistWords.length === 0) return false
+    const channelWords = new Set(wordsOf(channelTitle))
+    return artistWords.every((w) => channelWords.has(w))
+  }
+  const titleKey = (title: string) => {
+    const key = wordsOf(title).filter((w) => !TITLE_FILLER.has(w) && !/^(19|20)\d{2}$/.test(w)).join(' ')
+    return key || title.toLocaleLowerCase()
+  }
+  const byKey = new Map<string, (typeof collected)[number] & { official: boolean }>()
+  for (const entry of collected) {
+    const key = titleKey(entry.item.snippet?.title ?? '')
+    const official = channelIsOfficial(entry.item.snippet?.channelTitle ?? '')
+    const prev = byKey.get(key)
+    if (!prev) {
+      byKey.set(key, { ...entry, official })
+      continue
+    }
+    const prevViews = Number(prev.viewCount || 0)
+    const curViews = Number(entry.viewCount || 0)
+    const better =
+      (official && !prev.official) ||
+      (official === prev.official &&
+        (curViews > prevViews ||
+          (curViews === prevViews && (entry.publishedAt || '') < (prev.publishedAt || ''))))
+    if (better) byKey.set(key, { ...entry, official })
+  }
+  const deduped = [...byKey.values()]
+  const ranked = [...deduped.filter((e) => e.official), ...deduped.filter((e) => !e.official)]
+
   return NextResponse.json({
-    items: collected.map(({ item, duration, viewCount, publishedAt, description }) => ({
+    items: ranked.map(({ item, duration, viewCount, publishedAt, description }) => ({
       id: item.id.videoId,
       title: item.snippet?.title ?? '',
       channel: item.snippet?.channelTitle ?? '',
