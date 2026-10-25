@@ -19,7 +19,6 @@ const HISTORY_KEY = 'playtube-history'
 const LIKED_KEY = 'playtube-liked'
 const WATCH_LATER_KEY = 'playtube-watchlater'
 const SUBS_KEY = 'playtube-subscriptions'
-const HOME_FEED_QUERY = 'Hindi songs'
 const CHIPS = ['All', 'Music', 'Bollywood', 'Bhojpuri', 'Punjabi', 'Arijit Singh', 'Old Classics', 'New Releases', 'Live']
 
 function loadStored<T>(key: string): T[] {
@@ -92,8 +91,7 @@ export default function Page() {
   const [commentsFailed, setCommentsFailed] = useState(false)
   const [descExpanded, setDescExpanded] = useState(false)
   const [shareNote, setShareNote] = useState('')
-  const [recs, setRecs] = useState<Result[]>([])
-  const [recLabel, setRecLabel] = useState('Recommended for you')
+  const [homeHead, setHomeHead] = useState('Recommended for you')
 
   const recognitionRef = useRef<{
     start: () => void; stop: () => void; lang: string; interimResults: boolean; continuous: boolean
@@ -416,16 +414,11 @@ export default function Page() {
     setError('')
   }
 
-  // Tapping Home (or the logo) while already on Home refreshes the home
-  // feed and recommendations instead of doing nothing.
+  // Home (or the logo) always reloads the home feed — recommendations,
+  // not a fixed search — and leaves any playing video behind.
   function goHome() {
-    if (view === 'home' && !selected) {
-      setQuery(HOME_FEED_QUERY)
-      void loadRecommendations(historyRef.current, likedRef.current)
-      void runSearch(HOME_FEED_QUERY)
-    } else {
-      openView('home')
-    }
+    setSidebarOpen(false)
+    void loadHomeFeed(historyRef.current, likedRef.current)
   }
 
   function sendPlayerCommand(func: 'playVideo' | 'pauseVideo') {
@@ -461,10 +454,12 @@ export default function Page() {
     }
   }
 
-  // Recommendations for the home page: videos from the channel the user
-  // watches most (history + liked), falling back to trending when there is
-  // no watch history yet. One extra API call, kept separate from the feed.
-  async function loadRecommendations(hist: Result[], likedList: Result[]) {
+  // Home feed, YouTube-style: the starting page IS the recommendations,
+  // not a fixed search. Built from the channels the user watches most
+  // (history + liked, kept on this device only), mixed together so no
+  // single channel owns the feed; trending when there is no watch
+  // history yet. Search and chips still work exactly as before.
+  async function loadHomeFeed(hist: Result[], likedList: Result[]) {
     const counts = new Map<string, { name: string; n: number }>()
     for (const video of [...hist, ...likedList]) {
       if (!video.channelId) continue
@@ -472,27 +467,58 @@ export default function Page() {
       entry.n += 1
       counts.set(video.channelId, entry)
     }
-    const top = [...counts.entries()].sort((a, b) => b[1].n - a[1].n)[0]
+    const top = [...counts.entries()].sort((a, b) => b[1].n - a[1].n).slice(0, 3)
+    setLoading(true)
+    setError('')
+    setView('home')
+    setQuery('')
     try {
-      if (top) {
-        const response = await fetch(`/api/youtube/search?channelId=${encodeURIComponent(top[0])}`)
-        const data = await response.json()
-        if (response.ok && (data.items ?? []).length > 0) {
-          setRecs((data.items as unknown[]).map(normalize).slice(0, 12))
-          setRecLabel(`Recommended • Because you watched ${top[1].name}`)
+      if (top.length > 0) {
+        const lists = await Promise.all(top.map(async ([channelId]) => {
+          try {
+            const response = await fetch(`/api/youtube/search?channelId=${encodeURIComponent(channelId)}`)
+            const data = await response.json()
+            return response.ok ? (data.items as unknown[]).map(normalize) : []
+          } catch { return [] }
+        }))
+        const mixed: Result[] = []
+        const seen = new Set<string>()
+        let round = 0
+        let added = true
+        while (added && mixed.length < 30) {
+          added = false
+          for (const list of lists) {
+            const video = list[round]
+            if (video && !seen.has(video.id)) { seen.add(video.id); mixed.push(video); added = true }
+          }
+          round += 1
+        }
+        if (mixed.length > 0) {
+          syncQueue(mixed, -1)
+          setHomeHead('Recommended for you')
+          setNextPageToken(null)
+          setMoreBase(null)
+          setPlaying(false)
           return
         }
       }
       const response = await fetch('/api/youtube/trending')
       const data = await response.json()
-      if (response.ok) {
-        setRecs((data.items as unknown[]).map(normalize).slice(0, 12))
-        setRecLabel('Recommended for you')
-      }
-    } catch { /* recommendations are optional; the home feed still works */ }
+      if (!response.ok) throw new Error(data.error ?? 'Could not load home feed')
+      syncQueue((data.items as unknown[]).map(normalize), -1)
+      setHomeHead('Trending in India')
+      setNextPageToken(null)
+      setMoreBase(null)
+      setPlaying(false)
+    } catch (homeError) {
+      syncQueue([], -1)
+      setError(homeError instanceof Error ? homeError.message : 'Could not load home feed')
+    } finally {
+      setLoading(false)
+    }
   }
 
-  // First open: restore on-device lists, load recommendations, load home feed.
+  // First open: restore on-device lists, then load the home feed.
   useEffect(() => {
     const storedHistory = loadStored<Result>(HISTORY_KEY)
     const storedLiked = loadStored<Result>(LIKED_KEY)
@@ -506,9 +532,7 @@ export default function Page() {
     setLiked(storedLiked)
     setWatchLater(storedLater)
     setSubscriptions(storedSubs)
-    setQuery(HOME_FEED_QUERY)
-    void loadRecommendations(storedHistory, storedLiked)
-    void runSearch(HOME_FEED_QUERY)
+    void loadHomeFeed(storedHistory, storedLiked)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -571,9 +595,12 @@ export default function Page() {
   }, [])
 
   function chipSearch(chip: string) {
-    const value = chip === 'All' ? HOME_FEED_QUERY : chip
-    setQuery(value)
-    void runSearch(value)
+    if (chip === 'All') {
+      void loadHomeFeed(historyRef.current, likedRef.current)
+      return
+    }
+    setQuery(chip)
+    void runSearch(chip)
   }
 
   function openView(next: View) {
@@ -634,7 +661,7 @@ export default function Page() {
           {view === 'home' && (
             <nav className="yt-chips" aria-label="Categories">
               {CHIPS.map((chip) => (
-                <button key={chip} type="button" className={query === chip || (chip === 'All' && query === HOME_FEED_QUERY) ? 'active' : ''} onClick={() => chipSearch(chip)}>{chip}</button>
+                <button key={chip} type="button" className={query === chip || (chip === 'All' && query === '' && queue.length > 0) ? 'active' : ''} onClick={() => chipSearch(chip)}>{chip}</button>
               ))}
             </nav>
           )}
@@ -728,14 +755,8 @@ export default function Page() {
               {!loading && queue.length === 0 && !error && (
                 <div className="yt-empty"><Music2 size={30} /><h2>Search for a song</h2><p>Try “Arijit Singh”, “Bhojpuri songs” or anything you like.</p></div>
               )}
-              {recs.length > 0 && query === HOME_FEED_QUERY && (
-                <section className="yt-rec-section" aria-label="Recommended videos">
-                  <h2>{recLabel}</h2>
-                  <div className="yt-grid">{recs.map((video) => videoCard(video, recs))}</div>
-                </section>
-              )}
-              {recs.length > 0 && query === HOME_FEED_QUERY && queue.length > 0 && (
-                <div className="yt-section-head"><h2>More to explore</h2></div>
+              {queue.length > 0 && (
+                <div className="yt-section-head"><h2>{homeHead}</h2></div>
               )}
               <div className="yt-grid">{queue.map((video) => videoCard(video, queue))}</div>
               {nextPageToken && <button className="yt-load-more" type="button" onClick={loadMore} disabled={loading}>{loading ? <><LoaderCircle size={16} className="spin" /> Loading more</> : 'Load more videos'}</button>}
