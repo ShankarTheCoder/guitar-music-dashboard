@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, LoaderCircle, Mic, Music2, Play, Search, Truck, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, LoaderCircle, Mic, Music2, Play, Search, X } from 'lucide-react'
 
 type Result = { id: string; title: string; channel: string; thumbnail: string; duration: string }
 
@@ -13,7 +13,6 @@ export default function Page() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [playing, setPlaying] = useState(false)
-  const [truckPlaying, setTruckPlaying] = useState(false)
   const [listening, setListening] = useState(false)
   const [voiceSupported, setVoiceSupported] = useState(true)
   const recognitionRef = useRef<{ start: () => void; stop: () => void; lang: string; interimResults: boolean; continuous: boolean; onresult: ((event: { results: { [index: number]: { [index: number]: { transcript: string } } } }) => void) | null; onend: (() => void) | null; onerror: ((event: { error?: string }) => void) | null } | null>(null)
@@ -22,8 +21,6 @@ export default function Page() {
   const resultsRef = useRef<Result[]>([])
   const selectedRef = useRef<Result | null>(null)
   const historyRef = useRef<Result[]>([])
-  const truckNodesRef = useRef<{ source: AudioScheduledSourceNode; gain: GainNode }[]>([])
-  const audioContextRef = useRef<AudioContext | null>(null)
 
   async function toggleVoiceSearch() {
     if (listening) {
@@ -211,53 +208,6 @@ export default function Page() {
     playResult(previousVideo, false)
   }
 
-  function toggleTruck() {
-    const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-    if (!AudioContextClass) return
-    const context = audioContextRef.current ?? new AudioContextClass()
-    audioContextRef.current = context
-
-    if (truckPlaying) {
-      const now = context.currentTime
-      truckNodesRef.current.forEach(({ gain }) => {
-        gain.gain.cancelScheduledValues(now)
-        gain.gain.setTargetAtTime(0.0001, now, 0.08)
-      })
-      truckNodesRef.current.forEach(({ source }) => {
-        try { source.stop(now + 0.35) } catch { /* already stopped */ }
-      })
-      truckNodesRef.current = []
-      setTruckPlaying(false)
-      return
-    }
-
-    if (context.state === 'suspended') void context.resume()
-    const now = context.currentTime
-    const master = context.createGain()
-    master.gain.value = 0.2
-    master.connect(context.destination)
-
-    const siren = context.createOscillator()
-    const sirenGain = context.createGain()
-    siren.type = 'sawtooth'
-    sirenGain.gain.value = 0.0001
-    sirenGain.gain.setTargetAtTime(0.68, now, 0.04)
-    siren.connect(sirenGain).connect(master)
-
-    // A repeating two-tone sweep gives the button a continuous fire-truck siren sound.
-    const cycle = 1.35
-    for (let offset = 0; offset < 120; offset += cycle) {
-      const start = now + offset
-      siren.frequency.setValueAtTime(660, start)
-      siren.frequency.linearRampToValueAtTime(980, start + cycle * 0.48)
-      siren.frequency.linearRampToValueAtTime(660, start + cycle)
-    }
-
-    siren.start(now)
-    truckNodesRef.current = [{ source: siren, gain: master }]
-    setTruckPlaying(true)
-  }
-
   function sendPlayerCommand(func: 'playVideo' | 'pauseVideo') {
     const player = videoRef.current?.contentWindow
     if (!player) return
@@ -288,7 +238,7 @@ export default function Page() {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: selected.title,
         artist: selected.channel,
-        album: 'GuitarPlay',
+        album: 'PlayTube',
       })
       navigator.mediaSession.setActionHandler('nexttrack', playNextVideo)
       navigator.mediaSession.setActionHandler('previoustrack', playPreviousVideo)
@@ -321,19 +271,12 @@ export default function Page() {
     return () => window.removeEventListener('message', handleYouTubeMessage)
   }, [])
 
-  useEffect(() => () => {
-    truckNodesRef.current.forEach(({ source }) => {
-      try { source.stop() } catch { /* already stopped */ }
-    })
-    void audioContextRef.current?.close()
-  }, [])
-
   return (
     <main className="youtube-app">
       <div className="youtube-glow youtube-glow-one" />
       <div className="youtube-glow youtube-glow-two" />
       <header className="youtube-header">
-        <div className="youtube-brand"><span><Music2 size={18} /></span><strong>guitar<span>play</span></strong></div>
+        <div className="youtube-brand"><span><Music2 size={18} /></span><strong>Play<span>Tube</span></strong></div>
         <p>Search. Play. Practice.</p>
       </header>
 
@@ -349,9 +292,6 @@ export default function Page() {
             <button className={`search-action search-voice ${listening ? 'is-listening' : ''}`} type="button" onClick={toggleVoiceSearch} aria-label={listening ? 'Stop voice search' : voiceSupported ? 'Search by voice' : 'Voice search is unavailable in this browser'} aria-pressed={listening} title={listening ? 'Stop voice search' : voiceSupported ? 'Search by voice' : 'Voice search works in Chrome, Edge, and Safari'}><Mic size={18} /></button>
             <button className="search-submit" type="submit" disabled={loading || !query.trim()}>{loading ? <LoaderCircle size={18} className="spin" /> : 'Search'}</button>
           </form>
-          <button className={`guitar-play dashboard-truck ${truckPlaying ? 'is-playing' : ''}`} onClick={toggleTruck} aria-pressed={truckPlaying}>
-            <Truck size={17} />{truckPlaying ? 'Stop truck' : 'Truck sound'}
-          </button>
         </div>
         {error && <p className="youtube-error" role="alert">{error}</p>}
       </section>

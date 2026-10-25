@@ -3,7 +3,7 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'GuitarPlay — Search and Play Music Online',
+  title: 'PlayTube — Search and Play Music Online',
   description:
     'Search YouTube songs, discover full-length music, and play videos in a focused music dashboard built for everyday listening and practice.',
   keywords: [
@@ -12,12 +12,12 @@ export const metadata: Metadata = {
     'play songs online',
     'full song player',
     'music practice dashboard',
-    'GuitarPlay',
+    'PlayTube',
   ],
-  applicationName: 'GuitarPlay',
+  applicationName: 'PlayTube',
   category: 'music',
-  creator: 'GuitarPlay',
-  publisher: 'GuitarPlay',
+  creator: 'PlayTube',
+  publisher: 'PlayTube',
   robots: {
     index: true,
     follow: true,
@@ -34,14 +34,14 @@ export const metadata: Metadata = {
   },
   openGraph: {
     type: 'website',
-    siteName: 'GuitarPlay',
-    title: 'GuitarPlay — Search and Play Music Online',
+    siteName: 'PlayTube',
+    title: 'PlayTube — Search and Play Music Online',
     description:
       'Search YouTube songs, discover full-length music, and play videos in one focused music dashboard.',
   },
   twitter: {
     card: 'summary',
-    title: 'GuitarPlay — Search and Play Music Online',
+    title: 'PlayTube — Search and Play Music Online',
     description:
       'Search YouTube songs and play full-length music in one focused dashboard.',
   },
