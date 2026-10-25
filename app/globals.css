@@ -203,3 +203,9 @@ button { color: inherit; cursor: pointer; }
   .yt-auth-help { margin: 0 12px; }
   .yt-subscribe { padding: 0 12px; }
 }
+
+/* ---- PlayTube: red logo + home recommendations ---- */
+.yt-logo strong { color: #ff0033; }
+.yt-rec-section { margin-bottom: 28px; }
+.yt-rec-section h2, .yt-section-head h2 { font-size: 18px; margin: 0 0 14px; }
+.yt-section-head { margin-bottom: 2px; }

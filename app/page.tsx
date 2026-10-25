@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { signIn, signOut, useSession } from 'next-auth/react'
 import {
   Bell, Bookmark, ChevronLeft, ChevronRight, Clock, Flame, History, Home, LoaderCircle,
   Menu, MessageSquare, Mic, Music2, Pause, Play, Search, Share2, SkipBack, SkipForward,
@@ -22,7 +21,6 @@ const WATCH_LATER_KEY = 'playtube-watchlater'
 const SUBS_KEY = 'playtube-subscriptions'
 const HOME_FEED_QUERY = 'Hindi songs'
 const CHIPS = ['All', 'Music', 'Bollywood', 'Bhojpuri', 'Punjabi', 'Arijit Singh', 'Old Classics', 'New Releases', 'Live']
-const SITE_URL = 'https://v0-playtube.vercel.app'
 
 function loadStored<T>(key: string): T[] {
   try {
@@ -69,7 +67,6 @@ function formatDate(publishedAt?: string) {
 }
 
 export default function Page() {
-  const { data: session } = useSession()
   const [query, setQuery] = useState('')
   const [queue, setQueue] = useState<Result[]>([])
   const [currentIndex, setCurrentIndex] = useState(-1)
@@ -90,9 +87,8 @@ export default function Page() {
   const [commentsFailed, setCommentsFailed] = useState(false)
   const [descExpanded, setDescExpanded] = useState(false)
   const [shareNote, setShareNote] = useState('')
-  const [authConfigured, setAuthConfigured] = useState<boolean | null>(null)
-  const [showAuthHelp, setShowAuthHelp] = useState(false)
-  const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [recs, setRecs] = useState<Result[]>([])
+  const [recLabel, setRecLabel] = useState('Recommended for you')
 
   const recognitionRef = useRef<{
     start: () => void; stop: () => void; lang: string; interimResults: boolean; continuous: boolean
@@ -401,16 +397,38 @@ export default function Page() {
     }
   }
 
-  function handleSignIn() {
-    if (authConfigured) {
-      setShowAuthHelp(false)
-      void signIn('google')
-    } else {
-      setShowAuthHelp((open) => !open)
+  // Recommendations for the home page: videos from the channel the user
+  // watches most (history + liked), falling back to trending when there is
+  // no watch history yet. One extra API call, kept separate from the feed.
+  async function loadRecommendations(hist: Result[], likedList: Result[]) {
+    const counts = new Map<string, { name: string; n: number }>()
+    for (const video of [...hist, ...likedList]) {
+      if (!video.channelId) continue
+      const entry = counts.get(video.channelId) ?? { name: video.channel, n: 0 }
+      entry.n += 1
+      counts.set(video.channelId, entry)
     }
+    const top = [...counts.entries()].sort((a, b) => b[1].n - a[1].n)[0]
+    try {
+      if (top) {
+        const response = await fetch(`/api/youtube/search?channelId=${encodeURIComponent(top[0])}`)
+        const data = await response.json()
+        if (response.ok && (data.items ?? []).length > 0) {
+          setRecs((data.items as unknown[]).map(normalize).slice(0, 12))
+          setRecLabel(`Recommended • Because you watched ${top[1].name}`)
+          return
+        }
+      }
+      const response = await fetch('/api/youtube/trending')
+      const data = await response.json()
+      if (response.ok) {
+        setRecs((data.items as unknown[]).map(normalize).slice(0, 12))
+        setRecLabel('Recommended for you')
+      }
+    } catch { /* recommendations are optional; the home feed still works */ }
   }
 
-  // First open: restore on-device lists, check sign-in setup, load home feed.
+  // First open: restore on-device lists, load recommendations, load home feed.
   useEffect(() => {
     const storedHistory = loadStored<Result>(HISTORY_KEY)
     const storedLiked = loadStored<Result>(LIKED_KEY)
@@ -424,8 +442,8 @@ export default function Page() {
     setLiked(storedLiked)
     setWatchLater(storedLater)
     setSubscriptions(storedSubs)
-    fetch('/api/auth/status').then((r) => r.json()).then((d) => setAuthConfigured(Boolean(d.googleConfigured))).catch(() => setAuthConfigured(false))
     setQuery(HOME_FEED_QUERY)
+    void loadRecommendations(storedHistory, storedLiked)
     void runSearch(HOME_FEED_QUERY)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -514,14 +532,13 @@ export default function Page() {
     )
   }
 
-  const userInitial = (session?.user?.name ?? session?.user?.email ?? '?').trim().charAt(0).toUpperCase()
 
   return (
     <div className="yt-app">
       <header className="yt-topbar">
         <button className="yt-icon-btn" type="button" onClick={() => setSidebarOpen((open) => !open)} aria-label="Menu"><Menu size={22} /></button>
         <button className="yt-logo" type="button" onClick={() => openView('home')} aria-label="PlayTube home">
-          <span><Music2 size={18} /></span><strong>Play<span>Tube</span></strong>
+          <span><Play size={18} fill="currentColor" /></span><strong>PlayTube</strong>
         </button>
         <form className="yt-search" onSubmit={searchYouTube}>
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search" aria-label="Search" />
@@ -535,39 +552,7 @@ export default function Page() {
           aria-label={listening ? 'Stop voice search' : voiceSupported ? 'Search by voice' : 'Voice search is unavailable in this browser'}
           title={listening ? 'Stop voice search' : voiceSupported ? 'Search by voice' : 'Voice search works in Chrome, Edge, and Safari'}
         ><Mic size={20} /></button>
-        {session ? (
-          <div className="yt-auth">
-            <button className="yt-avatar" type="button" onClick={() => setUserMenuOpen((open) => !open)} aria-label="Account">
-              {session.user?.image ? <img src={session.user.image} alt="" /> : userInitial}
-            </button>
-            {userMenuOpen && (
-              <div className="yt-user-menu">
-                <strong>{session.user?.name ?? 'Signed in'}</strong>
-                <small>{session.user?.email ?? ''}</small>
-                <button type="button" onClick={() => { setUserMenuOpen(false); void signOut() }}>Sign out</button>
-              </div>
-            )}
-          </div>
-        ) : (
-          <button className="yt-signin" type="button" onClick={handleSignIn}>
-            <span className="yt-google-g">G</span> Sign in
-          </button>
-        )}
       </header>
-
-      {showAuthHelp && !session && (
-        <div className="yt-auth-help" role="note">
-          <strong>Google sign-in is not set up yet.</strong>
-          <p>It needs a free Google Cloud OAuth client (no secret is ever pasted in chat):</p>
-          <ol>
-            <li>Google Cloud Console → APIs &amp; Services → Credentials → Create OAuth client ID (Web application).</li>
-            <li>Authorised JavaScript origin: <code>{SITE_URL}</code></li>
-            <li>Authorised redirect URI: <code>{SITE_URL}/api/auth/callback/google</code></li>
-            <li>Vercel → this project → Settings → Environment Variables, add <code>GOOGLE_CLIENT_ID</code>, <code>GOOGLE_CLIENT_SECRET</code> and <code>AUTH_SECRET</code> (any random text), then Redeploy.</li>
-          </ol>
-          <p>After redeploy, this button signs you in with Google. History, liked videos and subscriptions stay saved on this device for now.</p>
-        </div>
-      )}
 
       <div className="yt-body">
         <aside className={`yt-sidebar ${sidebarOpen ? 'open' : ''}`}>
@@ -678,6 +663,15 @@ export default function Page() {
               {loading && queue.length === 0 && <p className="yt-loading"><LoaderCircle size={20} className="spin" /> Loading videos…</p>}
               {!loading && queue.length === 0 && !error && (
                 <div className="yt-empty"><Music2 size={30} /><h2>Search for a song</h2><p>Try “Arijit Singh”, “Bhojpuri songs” or anything you like.</p></div>
+              )}
+              {recs.length > 0 && query === HOME_FEED_QUERY && (
+                <section className="yt-rec-section" aria-label="Recommended videos">
+                  <h2>{recLabel}</h2>
+                  <div className="yt-grid">{recs.map((video) => videoCard(video, recs))}</div>
+                </section>
+              )}
+              {recs.length > 0 && query === HOME_FEED_QUERY && queue.length > 0 && (
+                <div className="yt-section-head"><h2>More to explore</h2></div>
               )}
               <div className="yt-grid">{queue.map((video) => videoCard(video, queue))}</div>
               {nextPageToken && <button className="yt-load-more" type="button" onClick={loadMore} disabled={loading}>{loading ? <><LoaderCircle size={16} className="spin" /> Loading more</> : 'Load more videos'}</button>}

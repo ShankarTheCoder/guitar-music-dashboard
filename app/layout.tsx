@@ -1,6 +1,6 @@
 import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
-import Providers from '../components/providers'
+
 import './globals.css'
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://playtube.vercel.app'
@@ -106,7 +106,7 @@ export default function RootLayout({
             }),
           }}
         />
-        <Providers>{children}</Providers>
+        {children}
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>
