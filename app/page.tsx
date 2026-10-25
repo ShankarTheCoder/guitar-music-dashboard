@@ -71,6 +71,11 @@ export default function Page() {
   const [queue, setQueue] = useState<Result[]>([])
   const [currentIndex, setCurrentIndex] = useState(-1)
   const [nextPageToken, setNextPageToken] = useState<string | null>(null)
+  // The exact list "Load more" continues: the search or channel that produced
+  // the current feed. (Using the search box text here would be wrong — the
+  // user may have typed something new without submitting, and a channel page
+  // has no search text at all.)
+  const [moreBase, setMoreBase] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [playing, setPlaying] = useState(false)
@@ -218,9 +223,11 @@ export default function Page() {
       if (!response.ok) throw new Error(data.error ?? 'Search failed')
       syncQueue((data.items ?? []).map(normalize), -1)
       setNextPageToken(data.nextPageToken ?? null)
+      setMoreBase(`/api/youtube/search?q=${encodeURIComponent(value)}`)
       setPlaying(false)
     } catch (searchError) {
       syncQueue([], -1)
+      setMoreBase(null)
       setError(searchError instanceof Error ? searchError.message : 'Search failed')
     } finally {
       setLoading(false)
@@ -233,11 +240,11 @@ export default function Page() {
   }
 
   async function loadMore() {
-    if (!nextPageToken || loading || !query.trim()) return
+    if (!nextPageToken || loading || !moreBase) return
     setLoading(true)
     setError('')
     try {
-      const response = await fetch(`/api/youtube/search?q=${encodeURIComponent(query.trim())}&pageToken=${encodeURIComponent(nextPageToken)}`)
+      const response = await fetch(`${moreBase}&pageToken=${encodeURIComponent(nextPageToken)}`)
       const data = await response.json()
       if (!response.ok) throw new Error(data.error ?? 'Could not load more videos')
       const updated = [...queueRef.current, ...(data.items ?? []).map(normalize)]
@@ -261,6 +268,7 @@ export default function Page() {
       if (!response.ok) throw new Error(data.error ?? 'Could not load trending videos')
       syncQueue((data.items ?? []).map(normalize), -1)
       setNextPageToken(null)
+      setMoreBase(null)
       setPlaying(false)
     } catch (trendError) {
       syncQueue([], -1)
@@ -282,9 +290,11 @@ export default function Page() {
       if (!response.ok) throw new Error(data.error ?? 'Could not load channel videos')
       syncQueue((data.items ?? []).map(normalize), -1)
       setNextPageToken(data.nextPageToken ?? null)
+      setMoreBase(`/api/youtube/search?channelId=${encodeURIComponent(channel.id)}`)
       setPlaying(false)
     } catch (channelError) {
       syncQueue([], -1)
+      setMoreBase(null)
       setError(channelError instanceof Error ? channelError.message : 'Could not load channel videos')
     } finally {
       setLoading(false)
@@ -292,9 +302,50 @@ export default function Page() {
   }
 
   async function toggleVoiceSearch() {
+    // In the PlayTube Android app, the mic is handled by the phone itself
+    // (Android's own speech recognizer, bridged in as window.PlayTubeMic),
+    // because an app WebView does not reliably provide web speech recognition.
+    // In a normal browser this block is skipped and web speech is used below.
+    const nativeWindow = window as typeof window & {
+      PlayTubeMic?: { startListening: () => void; stopListening: () => void }
+      __playtubeMicResult?: (transcript: string) => void
+      __playtubeMicError?: (code: string) => void
+    }
+    const nativeMic = nativeWindow.PlayTubeMic
     if (listening) {
+      if (nativeMic) {
+        try { nativeMic.stopListening() } catch { /* already stopped */ }
+      }
       recognitionRef.current?.stop()
       setListening(false)
+      return
+    }
+    if (nativeMic && typeof nativeMic.startListening === 'function') {
+      setError('')
+      nativeWindow.__playtubeMicResult = (transcript: string) => {
+        setListening(false)
+        const value = (transcript ?? '').trim()
+        if (!value) {
+          setError('I could not understand that. Please try again.')
+          return
+        }
+        setQuery(value)
+        void runSearch(value)
+      }
+      nativeWindow.__playtubeMicError = (code: string) => {
+        setListening(false)
+        if (code === 'no-speech') setError('No speech detected. Tap the microphone and speak clearly.')
+        else if (code === 'not-allowed') setError('Microphone access is blocked. Allow microphone access for PlayTube, then try again.')
+        else if (code === 'not-supported') setError('Voice search is not available on this device. Type your song title instead.')
+        else setError('Voice search could not start. Try the microphone again.')
+      }
+      try {
+        nativeMic.startListening()
+        setListening(true)
+      } catch {
+        setListening(false)
+        setError('Voice search could not start. Tap the microphone again.')
+      }
       return
     }
     const speechWindow = window as typeof window & {
@@ -360,8 +411,21 @@ export default function Page() {
     setQuery('')
     syncQueue([], -1)
     setNextPageToken(null)
+    setMoreBase(null)
     setPlaying(false)
     setError('')
+  }
+
+  // Tapping Home (or the logo) while already on Home refreshes the home
+  // feed and recommendations instead of doing nothing.
+  function goHome() {
+    if (view === 'home' && !selected) {
+      setQuery(HOME_FEED_QUERY)
+      void loadRecommendations(historyRef.current, likedRef.current)
+      void runSearch(HOME_FEED_QUERY)
+    } else {
+      openView('home')
+    }
   }
 
   function sendPlayerCommand(func: 'playVideo' | 'pauseVideo') {
@@ -537,7 +601,7 @@ export default function Page() {
     <div className="yt-app">
       <header className="yt-topbar">
         <button className="yt-icon-btn" type="button" onClick={() => setSidebarOpen((open) => !open)} aria-label="Menu"><Menu size={22} /></button>
-        <button className="yt-logo" type="button" onClick={() => openView('home')} aria-label="PlayTube home">
+        <button className="yt-logo" type="button" onClick={goHome} aria-label="PlayTube home">
           <span><Play size={18} fill="currentColor" /></span><strong>PlayTube</strong>
         </button>
         <form className="yt-search" onSubmit={searchYouTube}>
@@ -556,7 +620,7 @@ export default function Page() {
 
       <div className="yt-body">
         <aside className={`yt-sidebar ${sidebarOpen ? 'open' : ''}`}>
-          <button className={view === 'home' ? 'active' : ''} type="button" onClick={() => openView('home')}><Home size={20} /><span>Home</span></button>
+          <button className={view === 'home' ? 'active' : ''} type="button" onClick={goHome}><Home size={20} /><span>Home</span></button>
           <button className={view === 'trending' ? 'active' : ''} type="button" onClick={() => { setSidebarOpen(false); void loadTrending() }}><Flame size={20} /><span>Trending</span></button>
           <button className={view === 'subscriptions' ? 'active' : ''} type="button" onClick={() => openView('subscriptions')}><Users size={20} /><span>Subscriptions</span></button>
           <button className={view === 'history' ? 'active' : ''} type="button" onClick={() => openView('history')}><History size={20} /><span>History</span></button>
