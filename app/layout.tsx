@@ -2,8 +2,14 @@ import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://playtube.vercel.app'
+
 export const metadata: Metadata = {
-  title: 'PlayTube — Search and Play Music Online',
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: 'PlayTube — Search and Play Music Online',
+    template: '%s | PlayTube',
+  },
   description:
     'Search YouTube songs, discover full-length music, and play videos in a focused music dashboard built for everyday listening and practice.',
   keywords: [
@@ -34,6 +40,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     type: 'website',
+    url: '/',
     siteName: 'PlayTube',
     title: 'PlayTube — Search and Play Music Online',
     description:
@@ -81,6 +88,23 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased">
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              '@context': 'https://schema.org',
+              '@type': 'WebSite',
+              name: 'PlayTube',
+              url: siteUrl,
+              description: 'Search YouTube songs and play full-length music online in one focused dashboard.',
+              potentialAction: {
+                '@type': 'SearchAction',
+                target: `${siteUrl}/?q={search_term_string}`,
+                'query-input': 'required name=search_term_string',
+              },
+            }),
+          }}
+        />
         {children}
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
