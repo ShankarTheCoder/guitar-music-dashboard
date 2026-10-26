@@ -9,10 +9,14 @@ import {
 
 type Result = {
   id: string; title: string; channel: string; channelId: string; thumbnail: string; duration: string
-  viewCount?: string; publishedAt?: string; description?: string
+  viewCount?: string; likeCount?: string; commentCount?: string; publishedAt?: string; description?: string
+  channelAvatar?: string
 }
-type Channel = { id: string; name: string }
-type Comment = { id: string; author: string; authorImage: string; text: string; likes: number; publishedAt: string }
+type Channel = {
+  id: string; name: string
+  avatar?: string; handle?: string; subs?: string; videos?: string; description?: string; banner?: string
+}
+type Comment = { id: string; author: string; authorImage: string; text: string; likes: number; publishedAt: string; replies?: number }
 type View = 'home' | 'history' | 'liked' | 'trending' | 'subscriptions' | 'watchlater' | 'channel'
 
 const HISTORY_KEY = 'playtube-history'
@@ -45,8 +49,11 @@ function normalize(video: Partial<Result> & { id: string }): Result {
     thumbnail: video.thumbnail ?? '',
     duration: video.duration ?? '—',
     viewCount: video.viewCount ?? '',
+    likeCount: video.likeCount ?? '',
+    commentCount: video.commentCount ?? '',
     publishedAt: video.publishedAt ?? '',
     description: video.description ?? '',
+    channelAvatar: video.channelAvatar ?? '',
   }
 }
 
@@ -56,6 +63,14 @@ function formatViews(viewCount?: string) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M views`
   if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, '')}K views`
   return `${n} views`
+}
+
+function formatCompact(count?: string) {
+  const n = Number(count ?? 0)
+  if (!n) return ''
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, '')}K`
+  return `${n}`
 }
 
 function formatDate(publishedAt?: string) {
@@ -91,6 +106,7 @@ export default function Page() {
   const [watchLater, setWatchLater] = useState<Result[]>([])
   const [subscriptions, setSubscriptions] = useState<Channel[]>([])
   const [channelView, setChannelView] = useState<Channel | null>(null)
+  const [channelDetails, setChannelDetails] = useState<Channel | null>(null)
   const [comments, setComments] = useState<Comment[]>([])
   const [commentsFailed, setCommentsFailed] = useState(false)
   const [descExpanded, setDescExpanded] = useState(false)
@@ -323,6 +339,17 @@ export default function Page() {
     setView('channel')
     setLoading(true)
     setError('')
+    // Channel page header details (avatar, banner, subscribers, counts).
+    fetch(`/api/youtube/channel?id=${encodeURIComponent(channel.id)}`)
+      .then((r) => r.json().then((d) => ({ ok: r.ok, data: d })))
+      .then(({ ok, data }) => {
+        if (!ok) return
+        setChannelView({
+          id: data.id, name: data.title, avatar: data.avatar, handle: data.handle,
+          subs: data.subscriberCount, videos: data.videoCount, description: data.description, banner: data.banner,
+        })
+      })
+      .catch(() => {})
     try {
       const response = await fetch(`/api/youtube/search?channelId=${encodeURIComponent(channel.id)}`)
       const data = await response.json()
@@ -536,6 +563,27 @@ export default function Page() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Full channel details for the playing video (avatar, subscribers),
+  // like the channel row under YouTube's player.
+  useEffect(() => {
+    if (!playerVideo?.channelId) {
+      setChannelDetails(null)
+      return
+    }
+    let cancelled = false
+    fetch(`/api/youtube/channel?id=${encodeURIComponent(playerVideo.channelId)}`)
+      .then((r) => r.json().then((d) => ({ ok: r.ok, data: d })))
+      .then(({ ok, data }) => {
+        if (cancelled || !ok) return
+        setChannelDetails({
+          id: data.id, name: data.title, avatar: data.avatar, handle: data.handle,
+          subs: data.subscriberCount, videos: data.videoCount, description: data.description, banner: data.banner,
+        })
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [playerVideo])
+
   // Comments for the playing video.
   useEffect(() => {
     if (!playerVideo) {
@@ -637,7 +685,7 @@ export default function Page() {
     if (next !== 'channel') setChannelView(null)
   }
 
-  function videoCard(video: Result, list: Result[]) {
+  function videoCard(video: Result, list: Result[], showDesc = false) {
     const meta = [formatViews(video.viewCount), formatDate(video.publishedAt)].filter(Boolean).join(' • ')
     return (
       <button className="yt-card" key={video.id} onClick={() => playVideo(video, list)}>
@@ -646,7 +694,14 @@ export default function Page() {
           <i><Play size={16} fill="currentColor" /></i>
           <b>{video.duration}</b>
         </span>
-        <span className="yt-card-text"><strong>{video.title}</strong><small>{video.channel}{meta ? ` • ${meta}` : ''}</small></span>
+        <span className="yt-card-row">
+          {video.channelAvatar
+            ? <span className="yt-card-avatar"><img src={video.channelAvatar} alt="" loading="lazy" /></span>
+            : <span className="yt-card-avatar">{(video.channel || '?').trim().charAt(0).toUpperCase()}</span>}
+          <span className="yt-card-text"><strong>{video.title}</strong><small>{video.channel}{meta ? ` • ${meta}` : ''}</small>
+            {showDesc && video.description && <small className="yt-card-desc">{video.description.slice(0, 120)}{video.description.length > 120 ? '…' : ''}</small>}
+          </span>
+        </span>
       </button>
     )
   }
@@ -712,12 +767,14 @@ export default function Page() {
                 </div>
                 <h1 className="yt-watch-title">{playerVideo.title}</h1>
                 <div className="yt-channel-row">
-                  <span className="yt-channel-avatar">{(playerVideo.channel || '?').trim().charAt(0).toUpperCase()}</span>
+                  {channelDetails?.avatar
+                    ? <span className="yt-channel-avatar"><img src={channelDetails.avatar} alt="" /></span>
+                    : <span className="yt-channel-avatar">{(playerVideo.channel || '?').trim().charAt(0).toUpperCase()}</span>}
                   <span className="yt-channel-meta">
                     {selectedChannel
                       ? <button type="button" onClick={() => openChannel(selectedChannel)}>{playerVideo.channel}</button>
                       : <strong>{playerVideo.channel}</strong>}
-                    <small>{[formatViews(playerVideo.viewCount), formatDate(playerVideo.publishedAt)].filter(Boolean).join(' • ')}</small>
+                    <small>{[channelDetails?.subs ? `${formatCompact(channelDetails.subs)} subscribers` : '', formatViews(playerVideo.viewCount), formatDate(playerVideo.publishedAt)].filter(Boolean).join(' • ')}</small>
                   </span>
                   <button
                     className={`yt-subscribe ${isSubscribed ? 'subscribed' : ''}`}
@@ -742,7 +799,7 @@ export default function Page() {
                     <button type="button" onClick={playPrev} disabled={!canPrev}><ChevronLeft size={18} /> Previous</button>
                     <button type="button" onClick={playNext} disabled={!canNext}>Next <ChevronRight size={18} /></button>
                   </div>
-                  <button className={`yt-pill ${isLiked ? 'active' : ''}`} type="button" onClick={toggleLike}><ThumbsUp size={17} /> {isLiked ? 'Liked' : 'Like'}</button>
+                  <button className={`yt-pill ${isLiked ? 'active' : ''}`} type="button" onClick={toggleLike}><ThumbsUp size={17} /> {playerVideo.likeCount ? `${formatCompact(playerVideo.likeCount)} ` : ''}{isLiked ? 'Liked' : 'Like'}</button>
                   <button className={`yt-pill ${isSavedLater ? 'active' : ''}`} type="button" onClick={toggleWatchLater}><Bookmark size={17} /> {isSavedLater ? 'Saved' : 'Watch Later'}</button>
                   <button className="yt-pill" type="button" onClick={shareVideo}><Share2 size={17} /> Share</button>
                   {shareNote && <span className="yt-share-note">{shareNote}</span>}
@@ -753,7 +810,7 @@ export default function Page() {
                   <button type="button" onClick={closePlayer} aria-label="Stop and close player"><X size={18} /></button>
                 </div>
                 <section className="yt-comments" aria-label="Comments">
-                  <h2><MessageSquare size={18} /> Comments</h2>
+                  <h2><MessageSquare size={18} /> {playerVideo.commentCount ? `${Number(playerVideo.commentCount).toLocaleString('en-US')} Comments` : 'Comments'}</h2>
                   {commentsFailed && <p className="yt-empty-note">Comments are turned off for this video or could not be loaded.</p>}
                   {!commentsFailed && comments.length === 0 && <p className="yt-empty-note">No comments yet.</p>}
                   {comments.map((comment) => (
@@ -764,7 +821,7 @@ export default function Page() {
                       <div>
                         <strong>{comment.author}</strong>
                         <p>{comment.text}</p>
-                        <small>👍 {comment.likes}</small>
+                        <small>👍 {comment.likes}{comment.publishedAt ? ` • ${formatDate(comment.publishedAt)}` : ''}{comment.replies ? ` • ${comment.replies} ${comment.replies === 1 ? 'reply' : 'replies'}` : ''}</small>
                       </div>
                     </article>
                   ))}
@@ -776,7 +833,7 @@ export default function Page() {
                 {upNext.map((video) => (
                   <button className="yt-upnext-row" key={video.id} onClick={() => playVideo(video, playerQueue)}>
                     <span className="yt-upnext-thumb">{video.thumbnail && <img src={video.thumbnail} alt="" loading="lazy" />}<b>{video.duration}</b></span>
-                    <span><strong>{video.title}</strong><small>{video.channel}</small></span>
+                    <span><strong>{video.title}</strong><small>{[video.channel, formatViews(video.viewCount), formatDate(video.publishedAt)].filter(Boolean).join(' • ')}</small></span>
                   </button>
                 ))}
               </aside>
@@ -793,7 +850,7 @@ export default function Page() {
               {queue.length > 0 && (
                 <div className="yt-section-head"><h2>{homeHead}</h2></div>
               )}
-              <div className="yt-grid">{queue.map((video) => videoCard(video, queue))}</div>
+              <div className="yt-grid">{queue.map((video) => videoCard(video, queue, query.trim() !== ''))}</div>
               {nextPageToken && <button className="yt-load-more" type="button" onClick={loadMore} disabled={loading}>{loading ? <><LoaderCircle size={16} className="spin" /> Loading more</> : 'Load more videos'}</button>}
             </section>
           )}
@@ -808,10 +865,15 @@ export default function Page() {
 
           {view === 'channel' && channelView && (
             <section aria-label="Channel videos">
+              {channelView.banner && <img className="yt-channel-banner" src={channelView.banner} alt="" />}
               <div className="yt-channel-head">
-                <span className="yt-channel-avatar big">{channelView.name.trim().charAt(0).toUpperCase()}</span>
+                {channelView.avatar
+                  ? <span className="yt-channel-avatar big"><img src={channelView.avatar} alt="" /></span>
+                  : <span className="yt-channel-avatar big">{channelView.name.trim().charAt(0).toUpperCase()}</span>}
                 <div>
                   <h1>{channelView.name}</h1>
+                  <p className="yt-channel-stats">{[channelView.handle, channelView.subs ? `${formatCompact(channelView.subs)} subscribers` : '', channelView.videos ? `${formatCompact(channelView.videos)} videos` : ''].filter(Boolean).join(' • ')}</p>
+                  {channelView.description && <p className="yt-channel-desc">{channelView.description.slice(0, 200)}{channelView.description.length > 200 ? '…' : ''}</p>}
                   <button
                     className={`yt-subscribe ${subscriptions.some((c) => c.id === channelView.id) ? 'subscribed' : ''}`}
                     type="button"
@@ -833,7 +895,9 @@ export default function Page() {
                 {subscriptions.map((channel) => (
                   <div className="yt-history-row" key={channel.id}>
                     <button className="yt-sub-row" type="button" onClick={() => openChannel(channel)}>
-                      <span className="yt-channel-avatar">{channel.name.trim().charAt(0).toUpperCase()}</span>
+                      {channel.avatar
+                        ? <span className="yt-channel-avatar"><img src={channel.avatar} alt="" /></span>
+                        : <span className="yt-channel-avatar">{channel.name.trim().charAt(0).toUpperCase()}</span>}
                       <span><strong>{channel.name}</strong></span>
                     </button>
                     <button className="yt-history-remove" type="button" onClick={() => toggleSubscribe(channel)} aria-label={`Unsubscribe from ${channel.name}`}><X size={17} /></button>

@@ -9,8 +9,11 @@ type Entry = {
   item: SearchItem
   duration: number
   viewCount: string
+  likeCount: string
+  commentCount: string
   publishedAt: string
   description: string
+  channelAvatar?: string
 }
 
 const TITLE_FILLER = new Set([
@@ -58,12 +61,14 @@ export async function GET(request: Request) {
     const detailsParams = new URLSearchParams({ part: 'contentDetails,snippet,statistics', id: ids, key: apiKey })
     const detailsData = await yt('videos', detailsParams)
     const durations = new Map<string, number>()
-    const meta = new Map<string, { viewCount: string; publishedAt: string; description: string }>()
+    const meta = new Map<string, { viewCount: string; likeCount: string; commentCount: string; publishedAt: string; description: string }>()
     for (const item of detailsData.items ?? []) {
       const duration = parseDuration(item.contentDetails?.duration)
       if (duration !== undefined) durations.set(item.id, duration)
       meta.set(item.id, {
         viewCount: item.statistics?.viewCount ?? '',
+        likeCount: item.statistics?.likeCount ?? '',
+        commentCount: item.statistics?.commentCount ?? '',
         publishedAt: item.snippet?.publishedAt ?? '',
         description: item.snippet?.description ?? '',
       })
@@ -74,7 +79,7 @@ export async function GET(request: Request) {
       const duration = durations.get(item.id.videoId)
       const isShort = /#shorts?\b|#ytshorts\b|\bshorts?\b/i.test(title) || (duration !== undefined && duration <= 60)
       if (!isShort && duration !== undefined) {
-        const m = meta.get(item.id.videoId) ?? { viewCount: '', publishedAt: '', description: '' }
+        const m = meta.get(item.id.videoId) ?? { viewCount: '', likeCount: '', commentCount: '', publishedAt: '', description: '' }
         out.push({ item, duration, ...m })
       }
     }
@@ -99,6 +104,19 @@ export async function GET(request: Request) {
     if (!lastPageToken) break
     currentPageToken = lastPageToken
   }
+
+  // Channel avatars for every channel in the results, one batched call.
+  // Avatars are decorative: if the call fails, results still go out.
+  try {
+    const channelIds = [...new Set(collected.map((e) => e.item.snippet?.channelId).filter(Boolean))] as string[]
+    if (channelIds.length > 0) {
+      const params = new URLSearchParams({ part: 'snippet', id: channelIds.slice(0, 50).join(','), key: apiKey })
+      const data = await yt('channels', params)
+      const avatars = new Map<string, string>()
+      for (const item of data.items ?? []) avatars.set(item.id, item.snippet?.thumbnails?.default?.url ?? '')
+      for (const entry of collected) entry.channelAvatar = avatars.get(entry.item.snippet?.channelId ?? '') ?? ''
+    }
+  } catch { /* avatars are decorative */ }
 
   // Collapse exact re-uploads of the same song title (same words once
   // generic words are stripped), keeping the first — most relevant — copy.
@@ -130,7 +148,7 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.json({
-    items: ranked.map(({ item, duration, viewCount, publishedAt, description }) => ({
+    items: ranked.map(({ item, duration, viewCount, likeCount, commentCount, publishedAt, description, channelAvatar }) => ({
       id: item.id.videoId,
       title: item.snippet?.title ?? '',
       channel: item.snippet?.channelTitle ?? '',
@@ -138,8 +156,11 @@ export async function GET(request: Request) {
       thumbnail: item.snippet?.thumbnails?.medium?.url ?? '',
       duration: formatDuration(duration),
       viewCount,
+      likeCount,
+      commentCount,
       publishedAt,
       description,
+      channelAvatar: channelAvatar ?? '',
     })),
     nextPageToken: lastPageToken,
   })

@@ -24,7 +24,7 @@ export async function GET(request: Request) {
 
   const items = (data.items ?? []).map((item: {
     id: string
-    snippet?: { topLevelComment?: { snippet?: { authorDisplayName?: string; authorProfileImageUrl?: string; textDisplay?: string; likeCount?: number; publishedAt?: string } } }
+    snippet?: { totalReplyCount?: number; topLevelComment?: { snippet?: { authorDisplayName?: string; authorProfileImageUrl?: string; textDisplay?: string; likeCount?: number; publishedAt?: string } } }
   }) => {
     const comment = item.snippet?.topLevelComment?.snippet
     return {
@@ -34,6 +34,7 @@ export async function GET(request: Request) {
       text: comment?.textDisplay ?? '',
       likes: comment?.likeCount ?? 0,
       publishedAt: comment?.publishedAt ?? '',
+      replies: item.snippet?.totalReplyCount ?? 0,
     }
   })
 
