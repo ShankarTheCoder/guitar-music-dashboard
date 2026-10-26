@@ -95,7 +95,7 @@ export default function Page() {
   const [commentsFailed, setCommentsFailed] = useState(false)
   const [descExpanded, setDescExpanded] = useState(false)
   const [shareNote, setShareNote] = useState('')
-  const [homeHead, setHomeHead] = useState('Recommended for you')
+  const [homeHead, setHomeHead] = useState('Trending in India')
 
   const recognitionRef = useRef<{
     start: () => void; stop: () => void; lang: string; interimResults: boolean; continuous: boolean
@@ -453,11 +453,11 @@ export default function Page() {
     setError('')
   }
 
-  // Home (or the logo) always reloads the home feed — recommendations,
-  // not a fixed search — and leaves any playing video behind.
+  // Home (or the logo) always reloads the home feed — YouTube's own
+  // recommendations — and leaves any playing video behind.
   function goHome() {
     setSidebarOpen(false)
-    void loadHomeFeed(historyRef.current, likedRef.current)
+    void loadHomeFeed()
   }
 
   function sendPlayerCommand(func: 'playVideo' | 'pauseVideo') {
@@ -493,54 +493,16 @@ export default function Page() {
     }
   }
 
-  // Home feed, YouTube-style: the starting page IS the recommendations,
-  // not a fixed search. Built from the channels the user watches most
-  // (history + liked, kept on this device only), mixed together so no
-  // single channel owns the feed; trending when there is no watch
-  // history yet. Search and chips still work exactly as before.
-  async function loadHomeFeed(hist: Result[], likedList: Result[]) {
-    const counts = new Map<string, { name: string; n: number }>()
-    for (const video of [...hist, ...likedList]) {
-      if (!video.channelId) continue
-      const entry = counts.get(video.channelId) ?? { name: video.channel, n: 0 }
-      entry.n += 1
-      counts.set(video.channelId, entry)
-    }
-    const top = [...counts.entries()].sort((a, b) => b[1].n - a[1].n).slice(0, 3)
+  // Home feed is YouTube's own recommendations: India's most-popular
+  // videos, straight from YouTube — not picks built from this device's
+  // watch history. Search and chips still work exactly as before.
+  async function loadHomeFeed() {
     if (playerVideo) minimizePlayer()
     setLoading(true)
     setError('')
     setView('home')
     setQuery('')
     try {
-      if (top.length > 0) {
-        const lists = await Promise.all(top.map(async ([channelId]) => {
-          try {
-            const response = await fetch(`/api/youtube/search?channelId=${encodeURIComponent(channelId)}`)
-            const data = await response.json()
-            return response.ok ? (data.items as unknown[]).map(normalize) : []
-          } catch { return [] }
-        }))
-        const mixed: Result[] = []
-        const seen = new Set<string>()
-        let round = 0
-        let added = true
-        while (added && mixed.length < 30) {
-          added = false
-          for (const list of lists) {
-            const video = list[round]
-            if (video && !seen.has(video.id)) { seen.add(video.id); mixed.push(video); added = true }
-          }
-          round += 1
-        }
-        if (mixed.length > 0) {
-          syncQueue(mixed)
-          setHomeHead('Recommended for you')
-          setNextPageToken(null)
-          setMoreBase(null)
-          return
-        }
-      }
       const response = await fetch('/api/youtube/trending')
       const data = await response.json()
       if (!response.ok) throw new Error(data.error ?? 'Could not load home feed')
@@ -570,7 +532,7 @@ export default function Page() {
     setLiked(storedLiked)
     setWatchLater(storedLater)
     setSubscriptions(storedSubs)
-    void loadHomeFeed(storedHistory, storedLiked)
+    void loadHomeFeed()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -661,7 +623,7 @@ export default function Page() {
 
   function chipSearch(chip: string) {
     if (chip === 'All') {
-      void loadHomeFeed(historyRef.current, likedRef.current)
+      void loadHomeFeed()
       return
     }
     setQuery(chip)
