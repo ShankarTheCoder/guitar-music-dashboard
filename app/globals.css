@@ -77,6 +77,8 @@ button { color: inherit; cursor: pointer; }
 .yt-search input::placeholder { color: #888; }
 .yt-search-clear { display: grid; place-items: center; width: 36px; height: 36px; border: 0; border-radius: 50%; background: transparent; color: #aaa; cursor: pointer; }
 .yt-search-btn { width: 56px; height: 100%; border: 0; border-left: 1px solid #303030; background: #222; color: #f1f1f1; cursor: pointer; display: grid; place-items: center; }
+/* Voice toggle: separate solid dark circle beside the search bar. */
+.yt-icon-btn.yt-mic { background: #272727; }
 .yt-search-btn:disabled { opacity: .5; cursor: not-allowed; }
 .yt-body { display: flex; align-items: flex-start; }
 .yt-sidebar { position: sticky; top: 60px; height: calc(100vh - 60px); flex: 0 0 216px; padding: 12px; display: flex; flex-direction: column; gap: 2px; }
