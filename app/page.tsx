@@ -714,18 +714,20 @@ export default function Page() {
         <button className="yt-logo" type="button" onClick={goHome} aria-label="PlayTube home">
           <span><Play size={18} fill="currentColor" /></span><strong>PlayTube</strong>
         </button>
-        <form className="yt-search" onSubmit={searchYouTube}>
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search" aria-label="Search" />
-          {query.trim() && <button className="yt-search-clear" type="button" onClick={clearSearch} aria-label="Clear search"><X size={17} /></button>}
-          <button className="yt-search-btn" type="submit" disabled={loading || !query.trim()} aria-label="Search"><Search size={19} /></button>
-        </form>
-        <button
-          className={`yt-icon-btn yt-mic ${listening ? 'is-listening' : ''}`}
-          type="button"
-          onClick={toggleVoiceSearch}
-          aria-label={listening ? 'Stop voice search' : voiceSupported ? 'Search by voice' : 'Voice search is unavailable in this browser'}
-          title={listening ? 'Stop voice search' : voiceSupported ? 'Search by voice' : 'Voice search works in Chrome, Edge, and Safari'}
-        ><Mic size={20} /></button>
+        <div className="yt-search-wrap">
+          <form className="yt-search" onSubmit={searchYouTube}>
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search" aria-label="Search" />
+            {query.trim() && <button className="yt-search-clear" type="button" onClick={clearSearch} aria-label="Clear search"><X size={17} /></button>}
+            <button className="yt-search-btn" type="submit" disabled={loading || !query.trim()} aria-label="Search"><Search size={19} /></button>
+          </form>
+          <button
+            className={`yt-icon-btn yt-mic ${listening ? 'is-listening' : ''}`}
+            type="button"
+            onClick={toggleVoiceSearch}
+            aria-label={listening ? 'Stop voice search' : voiceSupported ? 'Search by voice' : 'Voice search is unavailable in this browser'}
+            title={listening ? 'Stop voice search' : voiceSupported ? 'Search by voice' : 'Voice search works in Chrome, Edge, and Safari'}
+          ><Mic size={20} /></button>
+        </div>
       </header>
 
       <div className="yt-body">

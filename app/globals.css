@@ -72,7 +72,8 @@ button { color: inherit; cursor: pointer; }
 .yt-logo { display: flex; align-items: center; gap: 6px; border: 0; background: transparent; color: #f1f1f1; font-size: 19px; letter-spacing: -0.8px; cursor: pointer; padding: 0; }
 .yt-logo > span { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; background: #ff0033; color: #fff; }
 .yt-logo strong span { color: #ff0033; }
-.yt-search { flex: 1; max-width: 640px; margin: 0 auto; display: flex; align-items: center; height: 42px; border: 1px solid #303030; border-radius: 22px; background: #121212; overflow: hidden; }
+.yt-search-wrap { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 10px; }
+.yt-search { flex: 0 1 640px; min-width: 0; margin: 0; display: flex; align-items: center; height: 42px; border: 1px solid #303030; border-radius: 22px; background: #121212; overflow: hidden; }
 .yt-search input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; color: #f1f1f1; font-size: 15px; padding: 0 16px; }
 .yt-search input::placeholder { color: #888; }
 .yt-search-clear { display: grid; place-items: center; width: 36px; height: 36px; border: 0; border-radius: 50%; background: transparent; color: #aaa; cursor: pointer; }
