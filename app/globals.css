@@ -118,11 +118,12 @@ button { color: inherit; cursor: pointer; }
 .yt-watch-title { font-size: 19px; line-height: 1.35; margin: 14px 0 4px; }
 .yt-watch-channel { color: #aaa; font-size: 13px; margin: 0 0 14px; }
 .yt-watch-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.yt-transport { display: flex; align-items: center; gap: 6px; margin-right: 6px; }
-.yt-transport button { display: grid; place-items: center; width: 42px; height: 42px; border: 0; border-radius: 50%; background: #272727; color: #f1f1f1; cursor: pointer; }
+.yt-transport { display: flex; align-items: center; gap: 14px; margin-right: 6px; }
+.yt-transport button { display: grid; place-items: center; width: 48px; height: 48px; border: 0; border-radius: 50%; background: #272727; color: #f1f1f1; cursor: pointer; }
 .yt-transport button:hover:not(:disabled) { background: #3d3d3d; }
 .yt-transport button:disabled { opacity: .35; cursor: not-allowed; }
-.yt-transport .yt-play-pause { width: 50px; height: 50px; background: #ff0033; color: #fff; }
+.yt-transport .yt-play-pause { width: 64px; height: 64px; background: #ff0033; color: #fff; }
+.yt-transport button.yt-play-pause:hover { background: #d6002b; }
 .yt-prev-next { display: flex; gap: 8px; }
 .yt-prev-next button { display: flex; align-items: center; gap: 5px; height: 38px; padding: 0 14px; border: 1px solid #303030; border-radius: 20px; background: #272727; color: #f1f1f1; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
 .yt-prev-next button:hover:not(:disabled) { background: #3d3d3d; }

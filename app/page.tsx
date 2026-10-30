@@ -791,9 +791,9 @@ export default function Page() {
                 )}
                 <div className="yt-watch-actions">
                   <div className="yt-transport" aria-label="Playback controls">
-                    <button type="button" onClick={playPrev} disabled={!canPrev} aria-label="Previous video"><SkipBack size={20} fill="currentColor" /></button>
-                    <button className="yt-play-pause" type="button" onClick={togglePlayPause} aria-label={playing ? 'Pause' : 'Play'}>{playing ? <Pause size={22} fill="currentColor" /> : <Play size={22} fill="currentColor" />}</button>
-                    <button type="button" onClick={playNext} disabled={!canNext} aria-label="Next video"><SkipForward size={20} fill="currentColor" /></button>
+                    <button type="button" onClick={playPrev} disabled={!canPrev} aria-label="Previous video"><SkipBack size={24} fill="currentColor" /></button>
+                    <button className="yt-play-pause" type="button" onClick={togglePlayPause} aria-label={playing ? 'Pause' : 'Play'}>{playing ? <Pause size={28} fill="currentColor" /> : <Play size={28} fill="currentColor" />}</button>
+                    <button type="button" onClick={playNext} disabled={!canNext} aria-label="Next video"><SkipForward size={24} fill="currentColor" /></button>
                   </div>
                   <div className="yt-prev-next" aria-label="Video navigation">
                     <button type="button" onClick={playPrev} disabled={!canPrev}><ChevronLeft size={18} /> Previous</button>
