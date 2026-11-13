@@ -68,6 +68,7 @@ button { color: inherit; cursor: pointer; }
 .yt-topbar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 10px; height: 60px; padding: 0 14px; background: rgba(15,15,15,.97); border-bottom: 1px solid #272727; }
 .yt-icon-btn { display: grid; place-items: center; width: 40px; height: 40px; border: 0; border-radius: 50%; background: transparent; color: #f1f1f1; cursor: pointer; }
 .yt-icon-btn:hover { background: #272727; }
+.yt-icon-btn:disabled { opacity: .5; cursor: not-allowed; }
 .yt-icon-btn.yt-mic.is-listening { color: #ff0033; background: #3a171d; }
 .yt-logo { display: flex; align-items: center; gap: 6px; border: 0; background: transparent; color: #f1f1f1; font-size: 19px; letter-spacing: -0.8px; cursor: pointer; padding: 0; }
 .yt-logo > span { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; background: #ff0033; color: #fff; }

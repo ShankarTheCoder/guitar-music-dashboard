@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   Bell, Bookmark, ChevronLeft, ChevronRight, ChevronUp, Clock, Flame, History, Home, LoaderCircle,
-  Menu, MessageSquare, Mic, Music2, Pause, Play, Search, Share2, SkipBack, SkipForward,
+  Menu, MessageSquare, Mic, Music2, Pause, Play, RotateCw, Search, Share2, SkipBack, SkipForward,
   ThumbsUp, Trash2, Users, X,
 } from 'lucide-react'
 
@@ -487,6 +487,24 @@ export default function Page() {
     void loadHomeFeed()
   }
 
+  // Refresh button: reloads whatever the user is looking at right now —
+  // the home feed, the current search, Trending, the open channel page,
+  // or the on-device lists — without stopping a song in the mini-player.
+  function refreshCurrent() {
+    if (loading) return
+    if (view === 'trending') { void loadTrending(); return }
+    if (view === 'channel' && channelView) { void openChannel(channelView); return }
+    if (view === 'home') {
+      if (query.trim() !== '') { void runSearch(query); return }
+      void loadHomeFeed()
+      return
+    }
+    setHistory(loadStored<Result>(HISTORY_KEY))
+    setLiked(loadStored<Result>(LIKED_KEY))
+    setWatchLater(loadStored<Result>(WATCH_LATER_KEY))
+    setSubscriptions(loadStored<Channel>(SUBS_KEY))
+  }
+
   function sendPlayerCommand(func: 'playVideo' | 'pauseVideo') {
     const player = videoRef.current?.contentWindow
     if (!player) return
@@ -728,6 +746,14 @@ export default function Page() {
             title={listening ? 'Stop voice search' : voiceSupported ? 'Search by voice' : 'Voice search works in Chrome, Edge, and Safari'}
           ><Mic size={20} /></button>
         </div>
+        <button
+          className="yt-icon-btn yt-refresh"
+          type="button"
+          onClick={refreshCurrent}
+          disabled={loading}
+          aria-label="Refresh"
+          title="Refresh"
+        >{loading ? <LoaderCircle size={20} className="spin" /> : <RotateCw size={20} />}</button>
       </header>
 
       <div className="yt-body">
