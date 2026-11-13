@@ -40,11 +40,14 @@ export async function GET(request: Request) {
 
   const referer = request.headers.get('referer') ?? request.url
   const pageToken = params0.get('pageToken')?.trim()
+  // Refresh bypasses the 60s server cache so a manual refresh really
+  // fetches fresh results from YouTube instead of the cached copy.
+  const fresh = params0.get('fresh') === '1'
 
   const yt = async (path: string, params: URLSearchParams) => {
     const response = await fetch(`https://www.googleapis.com/youtube/v3/${path}?${params}`, {
       headers: { Referer: referer },
-      next: { revalidate: 60 },
+      ...(fresh ? { cache: 'no-store' } : { next: { revalidate: 60 } }),
     })
     const data = await response.json()
     if (!response.ok) throw new Error(data.error?.message ?? `YouTube ${path} failed.`)

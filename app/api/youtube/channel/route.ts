@@ -8,11 +8,13 @@ export async function GET(request: Request) {
   if (!id) return NextResponse.json({ error: 'Channel id is required.' }, { status: 400 })
   if (!apiKey) return NextResponse.json({ error: 'YouTube search is not configured.' }, { status: 503 })
   const referer = request.headers.get('referer') ?? request.url
+  // Refresh bypasses the 300s server cache (see the trending route).
+  const fresh = new URL(request.url).searchParams.get('fresh') === '1'
 
   const params = new URLSearchParams({ part: 'snippet,statistics,brandingSettings', id, key: apiKey })
   const response = await fetch(`https://www.googleapis.com/youtube/v3/channels?${params}`, {
     headers: { Referer: referer },
-    next: { revalidate: 300 },
+    ...(fresh ? { cache: 'no-store' } : { next: { revalidate: 300 } }),
   })
   const data = await response.json()
   if (!response.ok) return NextResponse.json({ error: data.error?.message ?? 'Could not load channel.' }, { status: response.status })

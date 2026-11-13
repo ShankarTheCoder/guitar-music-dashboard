@@ -7,6 +7,10 @@ export async function GET(request: Request) {
   const apiKey = process.env.YOUTUBE_API_KEY
   if (!apiKey) return NextResponse.json({ error: 'YouTube search is not configured.' }, { status: 503 })
   const referer = request.headers.get('referer') ?? request.url
+  // Refresh bypasses the 300s server cache so a manual refresh really
+  // fetches fresh results from YouTube instead of the cached copy.
+  const fresh = new URL(request.url).searchParams.get('fresh') === '1'
+  const cacheOpt = fresh ? { cache: 'no-store' as const } : { next: { revalidate: 300 } }
 
   const params = new URLSearchParams({
     part: 'snippet,contentDetails,statistics',
@@ -18,7 +22,7 @@ export async function GET(request: Request) {
   })
   const response = await fetch(`https://www.googleapis.com/youtube/v3/videos?${params}`, {
     headers: { Referer: referer },
-    next: { revalidate: 300 },
+    ...cacheOpt,
   })
   const data = await response.json()
   if (!response.ok) return NextResponse.json({ error: data.error?.message ?? 'Could not load trending videos.' }, { status: response.status })
@@ -71,7 +75,7 @@ export async function GET(request: Request) {
       const avatarParams = new URLSearchParams({ part: 'snippet', id: channelIds.slice(0, 50).join(','), key: apiKey })
       const avatarResponse = await fetch(`https://www.googleapis.com/youtube/v3/channels?${avatarParams}`, {
         headers: { Referer: referer },
-        next: { revalidate: 300 },
+        ...cacheOpt,
       })
       const avatarData = await avatarResponse.json()
       if (avatarResponse.ok) {

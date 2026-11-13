@@ -96,6 +96,8 @@ export default function Page() {
   const [moreBase, setMoreBase] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [refreshNote, setRefreshNote] = useState('')
+  const refreshNoteTimer = useRef<number | null>(null)
   const [playing, setPlaying] = useState(false)
   const [listening, setListening] = useState(false)
   const [voiceSupported, setVoiceSupported] = useState(true)
@@ -265,24 +267,26 @@ export default function Page() {
     saveStored(HISTORY_KEY, updated)
   }
 
-  async function runSearch(searchText: string) {
+  async function runSearch(searchText: string, fresh = false): Promise<boolean> {
     const value = searchText.trim()
-    if (!value) return
+    if (!value) return false
     if (playerVideo) minimizePlayer()
     setLoading(true)
     setError('')
     setView('home')
     try {
-      const response = await fetch(`/api/youtube/search?q=${encodeURIComponent(value)}`)
+      const response = await fetch(`/api/youtube/search?q=${encodeURIComponent(value)}${fresh ? '&fresh=1' : ''}`)
       const data = await response.json()
       if (!response.ok) throw new Error(data.error ?? 'Search failed')
       syncQueue((data.items ?? []).map(normalize))
       setNextPageToken(data.nextPageToken ?? null)
       setMoreBase(`/api/youtube/search?q=${encodeURIComponent(value)}`)
+      return true
     } catch (searchError) {
       syncQueue([])
       setMoreBase(null)
       setError(searchError instanceof Error ? searchError.message : 'Search failed')
+      return false
     } finally {
       setLoading(false)
     }
@@ -312,35 +316,37 @@ export default function Page() {
     }
   }
 
-  async function loadTrending() {
+  async function loadTrending(fresh = false): Promise<boolean> {
     if (playerVideo) minimizePlayer()
     setLoading(true)
     setError('')
     setView('trending')
     try {
-      const response = await fetch('/api/youtube/trending')
+      const response = await fetch(`/api/youtube/trending${fresh ? '?fresh=1' : ''}`)
       const data = await response.json()
       if (!response.ok) throw new Error(data.error ?? 'Could not load trending videos')
       syncQueue((data.items ?? []).map(normalize))
       setNextPageToken(null)
       setMoreBase(null)
+      return true
     } catch (trendError) {
       syncQueue([])
       setError(trendError instanceof Error ? trendError.message : 'Could not load trending videos')
+      return false
     } finally {
       setLoading(false)
     }
   }
 
-  async function openChannel(channel: Channel) {
-    if (!channel.id) return
+  async function openChannel(channel: Channel, fresh = false): Promise<boolean> {
+    if (!channel.id) return false
     if (playerVideo) minimizePlayer()
     setChannelView(channel)
     setView('channel')
     setLoading(true)
     setError('')
     // Channel page header details (avatar, banner, subscribers, counts).
-    fetch(`/api/youtube/channel?id=${encodeURIComponent(channel.id)}`)
+    fetch(`/api/youtube/channel?id=${encodeURIComponent(channel.id)}${fresh ? '&fresh=1' : ''}`)
       .then((r) => r.json().then((d) => ({ ok: r.ok, data: d })))
       .then(({ ok, data }) => {
         if (!ok) return
@@ -351,16 +357,18 @@ export default function Page() {
       })
       .catch(() => {})
     try {
-      const response = await fetch(`/api/youtube/search?channelId=${encodeURIComponent(channel.id)}`)
+      const response = await fetch(`/api/youtube/search?channelId=${encodeURIComponent(channel.id)}${fresh ? '&fresh=1' : ''}`)
       const data = await response.json()
       if (!response.ok) throw new Error(data.error ?? 'Could not load channel videos')
       syncQueue((data.items ?? []).map(normalize))
       setNextPageToken(data.nextPageToken ?? null)
       setMoreBase(`/api/youtube/search?channelId=${encodeURIComponent(channel.id)}`)
+      return true
     } catch (channelError) {
       syncQueue([])
       setMoreBase(null)
       setError(channelError instanceof Error ? channelError.message : 'Could not load channel videos')
+      return false
     } finally {
       setLoading(false)
     }
@@ -487,22 +495,32 @@ export default function Page() {
     void loadHomeFeed()
   }
 
+  function showRefreshNote() {
+    setRefreshNote('Refreshed just now')
+    if (refreshNoteTimer.current) window.clearTimeout(refreshNoteTimer.current)
+    refreshNoteTimer.current = window.setTimeout(() => setRefreshNote(''), 2500)
+  }
+
   // Refresh button: reloads whatever the user is looking at right now —
   // the home feed, the current search, Trending, the open channel page,
   // or the on-device lists — without stopping a song in the mini-player.
-  function refreshCurrent() {
+  // It fetches fresh data from YouTube (bypassing the server cache) and
+  // shows a confirmation, so a tap always visibly does something.
+  async function refreshCurrent() {
     if (loading) return
-    if (view === 'trending') { void loadTrending(); return }
-    if (view === 'channel' && channelView) { void openChannel(channelView); return }
-    if (view === 'home') {
-      if (query.trim() !== '') { void runSearch(query); return }
-      void loadHomeFeed()
-      return
+    let ok = false
+    if (view === 'trending') ok = await loadTrending(true)
+    else if (view === 'channel' && channelView) ok = await openChannel(channelView, true)
+    else if (view === 'home') {
+      ok = query.trim() !== '' ? await runSearch(query, true) : await loadHomeFeed(true)
+    } else {
+      setHistory(loadStored<Result>(HISTORY_KEY))
+      setLiked(loadStored<Result>(LIKED_KEY))
+      setWatchLater(loadStored<Result>(WATCH_LATER_KEY))
+      setSubscriptions(loadStored<Channel>(SUBS_KEY))
+      ok = true
     }
-    setHistory(loadStored<Result>(HISTORY_KEY))
-    setLiked(loadStored<Result>(LIKED_KEY))
-    setWatchLater(loadStored<Result>(WATCH_LATER_KEY))
-    setSubscriptions(loadStored<Channel>(SUBS_KEY))
+    if (ok) showRefreshNote()
   }
 
   function sendPlayerCommand(func: 'playVideo' | 'pauseVideo') {
@@ -541,23 +559,25 @@ export default function Page() {
   // Home feed is YouTube's own recommendations: India's most-popular
   // videos, straight from YouTube — not picks built from this device's
   // watch history. Search and chips still work exactly as before.
-  async function loadHomeFeed() {
+  async function loadHomeFeed(fresh = false): Promise<boolean> {
     if (playerVideo) minimizePlayer()
     setLoading(true)
     setError('')
     setView('home')
     setQuery('')
     try {
-      const response = await fetch('/api/youtube/trending')
+      const response = await fetch(`/api/youtube/trending${fresh ? '?fresh=1' : ''}`)
       const data = await response.json()
       if (!response.ok) throw new Error(data.error ?? 'Could not load home feed')
       syncQueue((data.items as unknown[]).map(normalize))
       setHomeHead('Trending in India')
       setNextPageToken(null)
       setMoreBase(null)
+      return true
     } catch (homeError) {
       syncQueue([])
       setError(homeError instanceof Error ? homeError.message : 'Could not load home feed')
+      return false
     } finally {
       setLoading(false)
     }
@@ -769,6 +789,7 @@ export default function Page() {
         {sidebarOpen && <button className="yt-scrim" type="button" aria-label="Close menu" onClick={() => setSidebarOpen(false)} />}
 
         <main className="yt-main">
+          {refreshNote && <p className="yt-refresh-note">{refreshNote}</p>}
           {view === 'home' && (
             <nav className="yt-chips" aria-label="Categories">
               {CHIPS.map((chip) => (
