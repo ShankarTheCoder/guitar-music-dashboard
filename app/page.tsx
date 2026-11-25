@@ -1,10 +1,11 @@
 'use client'
 
+import { usePullToRefresh } from '@/lib/use-pull-to-refresh'
 import { useEffect, useRef, useState } from 'react'
 import {
   Bell, Bookmark, ChevronLeft, ChevronUp, Clock, Flame, History, Home, LoaderCircle,
   Menu, MessageSquare, Mic, Music2, Play, Search, Share2, SkipBack, SkipForward,
-  ThumbsUp, Trash2, Users, X, Monitor, Check, Video, Library,
+  ThumbsUp, Trash2, Users, X, Monitor, Check, Video, Library, RotateCw,
 } from 'lucide-react'
 
 type Result = {
@@ -88,7 +89,10 @@ function formatDate(publishedAt?: string) {
 
 export default function Page() {
   const moreButton = useRef<HTMLButtonElement>(null)
-  const touchStart = useRef<{ x: number; y: number } | null>(null)
+  const [refreshMessage, setRefreshMessage] = useState('')
+  const refreshBusy = useRef(false)
+  const refreshTimer = useRef<number | undefined>(undefined)
+  useEffect(() => () => window.clearTimeout(refreshTimer.current), [])
   const [query, setQuery] = useState('')
   const [queue, setQueue] = useState<Result[]>([])
   // Player state is separate from the feed: the feed list (queue) can be
@@ -294,7 +298,7 @@ export default function Page() {
     setNextPageToken(null)
     setHomeHead(`Results for “${value}”`)
     try {
-      const response = await fetch(`/api/youtube/search?q=${encodeURIComponent(value)}${fresh ? '&fresh=1' : ''}`)
+      const response = await fetch(`/api/youtube/search?q=${encodeURIComponent(value)}${fresh ? '&fresh=1' : ''}`, fresh ? { cache: 'no-store' } : undefined)
       const data = await response.json()
       if (request !== requestId.current) return false
       if (!response.ok) throw new Error(data.error ?? 'Search failed')
@@ -362,7 +366,7 @@ export default function Page() {
     setError('')
     setView('trending')
     try {
-      const response = await fetch(`/api/youtube/trending${fresh ? '?fresh=1' : ''}`)
+      const response = await fetch(`/api/youtube/trending${fresh ? '?fresh=1' : ''}`, fresh ? { cache: 'no-store' } : undefined)
       const data = await response.json()
       if (request !== requestId.current) return false
       if (!response.ok) throw new Error(data.error ?? 'Could not load trending videos')
@@ -389,7 +393,7 @@ export default function Page() {
     setLoading(true)
     setError('')
     // Channel page header details (avatar, banner, subscribers, counts).
-    fetch(`/api/youtube/channel?id=${encodeURIComponent(channel.id)}${fresh ? '&fresh=1' : ''}`)
+    fetch(`/api/youtube/channel?id=${encodeURIComponent(channel.id)}${fresh ? '&fresh=1' : ''}`, fresh ? { cache: 'no-store' } : undefined)
       .then((r) => r.json().then((d) => ({ ok: r.ok, data: d })))
       .then(({ ok, data }) => {
         if (!ok || request !== requestId.current) return
@@ -400,7 +404,7 @@ export default function Page() {
       })
       .catch(() => {})
     try {
-      const response = await fetch(`/api/youtube/search?channelId=${encodeURIComponent(channel.id)}${fresh ? '&fresh=1' : ''}`)
+      const response = await fetch(`/api/youtube/search?channelId=${encodeURIComponent(channel.id)}${fresh ? '&fresh=1' : ''}`, fresh ? { cache: 'no-store' } : undefined)
       const data = await response.json()
       if (request !== requestId.current) return false
       if (!response.ok) throw new Error(data.error ?? 'Could not load channel videos')
@@ -575,7 +579,7 @@ export default function Page() {
     setQuery('')
     setFeedQuery('')
     try {
-      const response = await fetch(`/api/youtube/trending${fresh ? '?fresh=1' : ''}`)
+      const response = await fetch(`/api/youtube/trending${fresh ? '?fresh=1' : ''}`, fresh ? { cache: 'no-store' } : undefined)
       const data = await response.json()
       if (request !== requestId.current) return false
       if (!response.ok) throw new Error(data.error ?? 'Could not load home feed')
@@ -775,6 +779,26 @@ export default function Page() {
 
 
   const browsing = !playerVideo || minimized
+  const remoteFeed = browsing && (view === 'home' || view === 'trending' || view === 'channel')
+  async function refreshFeed() {
+    if (refreshBusy.current || !remoteFeed || loading) return
+    refreshBusy.current = true
+    window.clearTimeout(refreshTimer.current)
+    setSidebarOpen(false)
+    setRefreshMessage('Refreshing…')
+    try {
+      let ok: boolean
+      if (view === 'channel' && channelView) ok = await openChannel(channelView, true)
+      else if (view === 'trending') ok = await loadTrending(true)
+      else if (feedQuery) ok = await runSearch(feedQuery, true)
+      else ok = await loadHomeFeed(true)
+      setRefreshMessage(ok ? 'Feed refreshed' : 'Refresh unsuccessful')
+    } finally {
+      refreshBusy.current = false
+      refreshTimer.current = window.setTimeout(() => setRefreshMessage(''), 1800)
+    }
+  }
+  const pull = usePullToRefresh(remoteFeed && !loading && !sidebarOpen, refreshFeed)
 
   return (
     <div data-playing={Boolean(playerVideo && playing)} className={`yt-app ${compactRail ? 'compact-rail' : ''}`}>
@@ -818,22 +842,13 @@ export default function Page() {
           <button className={view === 'history' ? 'active' : ''} type="button" onClick={() => openView('history')}><History size={20} /><span>History</span></button>
           <button className={view === 'watchlater' ? 'active' : ''} type="button" onClick={() => openView('watchlater')}><Clock size={20} /><span>Watch Later</span></button>
           <button className={view === 'liked' ? 'active' : ''} type="button" onClick={() => openView('liked')}><ThumbsUp size={20} /><span>Liked videos</span></button>
+          {remoteFeed && <button disabled={loading} onClick={refreshFeed}><RotateCw size={20} /><span>Refresh feed</span></button>}
           <p className="yt-side-note">Your library is saved on this device.</p>
         </aside>
         {sidebarOpen && <button className="yt-scrim" type="button" aria-label="Close menu" onClick={() => setSidebarOpen(false)} />}
 
-        <main className="yt-main" onTouchStart={event => {
-          touchStart.current = window.scrollY <= 0 && view === 'home' && (!playerVideo || minimized) && !loading && event.touches.length === 1
-            ? { x: event.touches[0].clientX, y: event.touches[0].clientY } : null
-        }} onTouchCancel={() => { touchStart.current = null }} onTouchEnd={event => {
-          const start = touchStart.current
-          touchStart.current = null
-          const end = event.changedTouches[0]
-          if (start && end && end.clientY - start.y > 85 && Math.abs(end.clientX - start.x) < 45) {
-            if (feedQuery) void runSearch(feedQuery, true)
-            else void loadHomeFeed(true)
-          }
-        }}>
+        <main className="yt-main" ref={pull.surface} data-refreshable={remoteFeed || undefined}>
+          {remoteFeed && (pull.hint || refreshMessage) && <div role="status" className="pull-feedback">{pull.hint || refreshMessage}</div>}
           {loading && queue.length > 0 && <div role="status" className="feed-progress" aria-label="Updating feed" />}
           {view === 'home' && (!playerVideo || minimized) && (
             <nav className="yt-chips" aria-label="Categories">

@@ -314,7 +314,7 @@ button { color: inherit; cursor: pointer; }
 .account-library .yt-page-head { margin-top: 14px; }
 .feed-progress { height: 2px; background: linear-gradient(90deg, transparent, #ff0033, transparent); position: fixed; inset: 59px 0 auto; z-index: 21; }
 @media (max-width: 600px) { .account-button { padding: 7px; } .account-button span { display: none; } .yt-topbar { gap: 3px; } }
-@media (pointer: coarse) { html:has(.yt-chips) { overscroll-behavior-y: contain; } }
+@media (pointer: coarse) { html:has([data-refreshable]) { overscroll-behavior-y: contain; } }
 .yt-external-nav { display: flex; align-items: center; gap: 18px; padding: 10px 12px; border-radius: 10px; font-size: 14px; }
 .yt-external-nav:hover { background: #272727; }
 .account-help { max-width: 600px; margin: 15vh auto; padding: 24px; }
@@ -366,3 +366,5 @@ html.android-pip .yt-watch .yt-player-col,
 html.android-pip .yt-watch .yt-player { display: block; width: 100%; height: 100%; margin: 0; padding: 0; border-radius: 0; }
 html.android-pip .yt-player-col > :not(.yt-player),
 html.android-pip .yt-watch .yt-upnext { display: none; }
+
+.pull-feedback { position: fixed; top: 68px; left: 50%; transform: translateX(-50%); z-index: 24; padding: 8px 16px; border-radius: 24px; background: #333; color: #fff; box-shadow: 0 2px 8px #0007; font-size: 14px; pointer-events: none; }
