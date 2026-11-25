@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, useState } from 'react'
 import {
-  Bell, Bookmark, ChevronLeft, ChevronRight, ChevronUp, Clock, Flame, History, Home, LoaderCircle,
+  Bell, Bookmark, ChevronLeft, ChevronUp, Clock, Flame, History, Home, LoaderCircle,
   Menu, MessageSquare, Mic, Music2, Pause, Play, RotateCw, Search, Share2, SkipBack, SkipForward,
-  ThumbsUp, Trash2, Users, X,
+  ThumbsUp, Trash2, Users, X, Monitor, Check,
 } from 'lucide-react'
 
 type Result = {
@@ -23,6 +23,12 @@ const HISTORY_KEY = 'playtube-history'
 const LIKED_KEY = 'playtube-liked'
 const WATCH_LATER_KEY = 'playtube-watchlater'
 const SUBS_KEY = 'playtube-subscriptions'
+const AUTOPLAY_KEY = 'playtube-autoplay'
+const GUITAR_PICKS = [
+  { id: 'p7p72OchGV0', title: 'Neon (Live in L.A.)', channel: 'John Mayer' },
+  { id: 'Z5NoQg8LdDk', title: 'Playing God', channel: 'Polyphia' },
+  { id: '9_gkpYORQLU', title: 'G.O.A.T.', channel: 'Polyphia' },
+].map(video => normalize({ ...video, thumbnail: `https://i.ytimg.com/vi/${video.id}/hqdefault.jpg` }))
 const CHIPS = ['All', 'Music', 'Bollywood', 'Bhojpuri', 'Punjabi', 'Arijit Singh', 'Old Classics', 'New Releases', 'Live']
 
 function loadStored<T>(key: string): T[] {
@@ -102,6 +108,12 @@ export default function Page() {
   const [listening, setListening] = useState(false)
   const [voiceSupported, setVoiceSupported] = useState(true)
   const [view, setView] = useState<View>('home')
+  const [theater, setTheater] = useState(false)
+  const [autoplay, setAutoplay] = useState(true)
+  const autoplayRef = useRef(true)
+  const [compactRail, setCompactRail] = useState(false)
+  const [feedQuery, setFeedQuery] = useState('')
+  const requestId = useRef(0)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [history, setHistory] = useState<Result[]>([])
   const [liked, setLiked] = useState<Result[]>([])
@@ -163,7 +175,7 @@ export default function Page() {
     playerIndexRef.current = index
     setPlayerIndex(index)
     setPlaying(true)
-    setView('home')
+    if (!minimizedRef.current) setView('home')
     setDescExpanded(false)
     rememberPlayed(video)
   }
@@ -271,24 +283,30 @@ export default function Page() {
     const value = searchText.trim()
     if (!value) return false
     if (playerVideo) minimizePlayer()
+    const request = ++requestId.current
     setLoading(true)
     setError('')
     setView('home')
+    setFeedQuery(value)
+    setNextPageToken(null)
+    setHomeHead(`Results for “${value}”`)
     try {
       const response = await fetch(`/api/youtube/search?q=${encodeURIComponent(value)}${fresh ? '&fresh=1' : ''}`)
       const data = await response.json()
+      if (request !== requestId.current) return false
       if (!response.ok) throw new Error(data.error ?? 'Search failed')
       syncQueue((data.items ?? []).map(normalize))
       setNextPageToken(data.nextPageToken ?? null)
       setMoreBase(`/api/youtube/search?q=${encodeURIComponent(value)}`)
       return true
     } catch (searchError) {
+      if (request !== requestId.current) return false
       syncQueue([])
       setMoreBase(null)
       setError(searchError instanceof Error ? searchError.message : 'Search failed')
       return false
     } finally {
-      setLoading(false)
+      if (request === requestId.current) setLoading(false)
     }
   }
 
@@ -299,42 +317,48 @@ export default function Page() {
 
   async function loadMore() {
     if (!nextPageToken || loading || !moreBase) return
+    const request = ++requestId.current
     setLoading(true)
     setError('')
     try {
       const response = await fetch(`${moreBase}&pageToken=${encodeURIComponent(nextPageToken)}`)
       const data = await response.json()
+      if (request !== requestId.current) return
       if (!response.ok) throw new Error(data.error ?? 'Could not load more videos')
       const updated = [...queueRef.current, ...(data.items ?? []).map(normalize)]
       queueRef.current = updated
       setQueue(updated)
       setNextPageToken(data.nextPageToken ?? null)
     } catch (loadError) {
+      if (request !== requestId.current) return
       setError(loadError instanceof Error ? loadError.message : 'Could not load more videos')
     } finally {
-      setLoading(false)
+      if (request === requestId.current) setLoading(false)
     }
   }
 
   async function loadTrending(fresh = false): Promise<boolean> {
     if (playerVideo) minimizePlayer()
+    const request = ++requestId.current
     setLoading(true)
     setError('')
     setView('trending')
     try {
       const response = await fetch(`/api/youtube/trending${fresh ? '?fresh=1' : ''}`)
       const data = await response.json()
+      if (request !== requestId.current) return false
       if (!response.ok) throw new Error(data.error ?? 'Could not load trending videos')
       syncQueue((data.items ?? []).map(normalize))
       setNextPageToken(null)
       setMoreBase(null)
       return true
     } catch (trendError) {
+      if (request !== requestId.current) return false
       syncQueue([])
       setError(trendError instanceof Error ? trendError.message : 'Could not load trending videos')
       return false
     } finally {
-      setLoading(false)
+      if (request === requestId.current) setLoading(false)
     }
   }
 
@@ -343,13 +367,14 @@ export default function Page() {
     if (playerVideo) minimizePlayer()
     setChannelView(channel)
     setView('channel')
+    const request = ++requestId.current
     setLoading(true)
     setError('')
     // Channel page header details (avatar, banner, subscribers, counts).
     fetch(`/api/youtube/channel?id=${encodeURIComponent(channel.id)}${fresh ? '&fresh=1' : ''}`)
       .then((r) => r.json().then((d) => ({ ok: r.ok, data: d })))
       .then(({ ok, data }) => {
-        if (!ok) return
+        if (!ok || request !== requestId.current) return
         setChannelView({
           id: data.id, name: data.title, avatar: data.avatar, handle: data.handle,
           subs: data.subscriberCount, videos: data.videoCount, description: data.description, banner: data.banner,
@@ -359,18 +384,20 @@ export default function Page() {
     try {
       const response = await fetch(`/api/youtube/search?channelId=${encodeURIComponent(channel.id)}${fresh ? '&fresh=1' : ''}`)
       const data = await response.json()
+      if (request !== requestId.current) return false
       if (!response.ok) throw new Error(data.error ?? 'Could not load channel videos')
       syncQueue((data.items ?? []).map(normalize))
       setNextPageToken(data.nextPageToken ?? null)
       setMoreBase(`/api/youtube/search?channelId=${encodeURIComponent(channel.id)}`)
       return true
     } catch (channelError) {
+      if (request !== requestId.current) return false
       syncQueue([])
       setMoreBase(null)
       setError(channelError instanceof Error ? channelError.message : 'Could not load channel videos')
       return false
     } finally {
-      setLoading(false)
+      if (request === requestId.current) setLoading(false)
     }
   }
 
@@ -479,6 +506,9 @@ export default function Page() {
   }
 
   function clearSearch() {
+    ++requestId.current
+    setLoading(false)
+    setFeedQuery('')
     recognitionRef.current?.stop()
     setListening(false)
     setQuery('')
@@ -561,25 +591,32 @@ export default function Page() {
   // watch history. Search and chips still work exactly as before.
   async function loadHomeFeed(fresh = false): Promise<boolean> {
     if (playerVideo) minimizePlayer()
+    const request = ++requestId.current
     setLoading(true)
     setError('')
     setView('home')
     setQuery('')
+    setFeedQuery('')
     try {
       const response = await fetch(`/api/youtube/trending${fresh ? '?fresh=1' : ''}`)
       const data = await response.json()
+      if (request !== requestId.current) return false
       if (!response.ok) throw new Error(data.error ?? 'Could not load home feed')
-      syncQueue((data.items as unknown[]).map(normalize))
+      syncQueue((data.items ?? []).map(normalize))
       setHomeHead('Trending in India')
       setNextPageToken(null)
       setMoreBase(null)
       return true
     } catch (homeError) {
-      syncQueue([])
-      setError(homeError instanceof Error ? homeError.message : 'Could not load home feed')
+      if (request !== requestId.current) return false
+      syncQueue(GUITAR_PICKS)
+      setHomeHead('Guitar picks')
+      setNextPageToken(null)
+      setMoreBase(null)
+      setError('Live trending is unavailable. Showing guitar picks.')
       return false
     } finally {
-      setLoading(false)
+      if (request === requestId.current) setLoading(false)
     }
   }
 
@@ -597,6 +634,8 @@ export default function Page() {
     setLiked(storedLiked)
     setWatchLater(storedLater)
     setSubscriptions(storedSubs)
+    autoplayRef.current = loadStored<boolean>(AUTOPLAY_KEY)[0] !== false
+    setAutoplay(autoplayRef.current)
     void loadHomeFeed()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -695,11 +734,13 @@ export default function Page() {
 
   useEffect(() => {
     const handleYouTubeMessage = (event: MessageEvent) => {
-      if (!event.origin.includes('youtube.com')) return
+      if (event.origin !== 'https://www.youtube.com' || event.source !== videoRef.current?.contentWindow) return
       let message: { event?: string; info?: number }
       try { message = typeof event.data === 'string' ? JSON.parse(event.data) : event.data } catch { return }
-      if (message.event !== 'onStateChange' || message.info !== 0) return
-      if (playerIndexRef.current < playerQueueRef.current.length - 1) playAt(playerIndexRef.current + 1)
+      if (message?.event !== 'onStateChange') return
+      if (message.info === 1 || message.info === 2) setPlaying(message.info === 1)
+      if (message.info !== 0) return
+      if (autoplayRef.current && playerIndexRef.current < playerQueueRef.current.length - 1) playAt(playerIndexRef.current + 1)
       else setPlaying(false)
     }
     window.addEventListener('message', handleYouTubeMessage)
@@ -718,6 +759,7 @@ export default function Page() {
 
   function openView(next: View) {
     if (playerVideo) minimizePlayer()
+    setError('')
     setView(next)
     setSidebarOpen(false)
     if (next !== 'channel') setChannelView(null)
@@ -726,29 +768,38 @@ export default function Page() {
   function videoCard(video: Result, list: Result[], showDesc = false) {
     const meta = [formatViews(video.viewCount), formatDate(video.publishedAt)].filter(Boolean).join(' • ')
     return (
-      <button className="yt-card" key={video.id} onClick={() => playVideo(video, list)}>
+      <article className="yt-card-wrap" key={video.id}>
+      <button className="yt-card" onClick={() => playVideo(video, list)}>
         <span className="yt-thumb">
           {video.thumbnail && <img src={video.thumbnail} alt="" loading="lazy" />}
           <i><Play size={16} fill="currentColor" /></i>
-          <b>{video.duration}</b>
+          {video.duration !== '—' && <b>{video.duration}</b>}
         </span>
         <span className="yt-card-row">
           {video.channelAvatar
             ? <span className="yt-card-avatar"><img src={video.channelAvatar} alt="" loading="lazy" /></span>
             : <span className="yt-card-avatar">{(video.channel || '?').trim().charAt(0).toUpperCase()}</span>}
-          <span className="yt-card-text"><strong>{video.title}</strong><small>{video.channel}{meta ? ` • ${meta}` : ''}</small>
+          <span className="yt-card-text"><strong>{video.title}</strong><small>{video.channel}</small>{meta && <small>{meta}</small>}
             {showDesc && video.description && <small className="yt-card-desc">{video.description.slice(0, 120)}{video.description.length > 120 ? '…' : ''}</small>}
           </span>
         </span>
       </button>
+      <button className="yt-card-save" aria-label={`Watch later: ${video.title}`}
+        aria-pressed={watchLater.some(item => item.id === video.id)}
+        title="Watch later" onClick={() => toggleInList(watchLaterRef.current, watchLaterRef, setWatchLater, WATCH_LATER_KEY, video)}>
+        {watchLater.some(item => item.id === video.id) ? <Check size={17} /> : <Clock size={17} />}
+      </button>
+      </article>
     )
   }
 
 
+  const featured = view === 'home' && !feedQuery && queue.length > 1 ? queue[0] : null
+
   return (
-    <div className="yt-app">
+    <div className={`yt-app ${compactRail ? 'compact-rail' : ''}`}>
       <header className="yt-topbar">
-        <button className="yt-icon-btn" type="button" onClick={() => setSidebarOpen((open) => !open)} aria-label="Menu"><Menu size={22} /></button>
+        <button className="yt-icon-btn" type="button" onClick={() => window.matchMedia('(max-width: 760px)').matches ? setSidebarOpen(open => !open) : setCompactRail(compact => !compact)} aria-label="Menu"><Menu size={22} /></button>
         <button className="yt-logo" type="button" onClick={goHome} aria-label="PlayTube home">
           <span><Play size={18} fill="currentColor" /></span><strong>PlayTube</strong>
         </button>
@@ -781,6 +832,7 @@ export default function Page() {
           <button className={view === 'home' ? 'active' : ''} type="button" onClick={goHome}><Home size={20} /><span>Home</span></button>
           <button className={view === 'trending' ? 'active' : ''} type="button" onClick={() => { setSidebarOpen(false); void loadTrending() }}><Flame size={20} /><span>Trending</span></button>
           <button className={view === 'subscriptions' ? 'active' : ''} type="button" onClick={() => openView('subscriptions')}><Users size={20} /><span>Subscriptions</span></button>
+          <h2 className="yt-nav-label">Your library</h2>
           <button className={view === 'history' ? 'active' : ''} type="button" onClick={() => openView('history')}><History size={20} /><span>History</span></button>
           <button className={view === 'watchlater' ? 'active' : ''} type="button" onClick={() => openView('watchlater')}><Clock size={20} /><span>Watch Later</span></button>
           <button className={view === 'liked' ? 'active' : ''} type="button" onClick={() => openView('liked')}><ThumbsUp size={20} /><span>Liked videos</span></button>
@@ -790,10 +842,10 @@ export default function Page() {
 
         <main className="yt-main">
           {refreshNote && <p className="yt-refresh-note">{refreshNote}</p>}
-          {view === 'home' && (
+          {view === 'home' && (!playerVideo || minimized) && (
             <nav className="yt-chips" aria-label="Categories">
               {CHIPS.map((chip) => (
-                <button key={chip} type="button" className={query === chip || (chip === 'All' && query === '' && queue.length > 0) ? 'active' : ''} onClick={() => chipSearch(chip)}>{chip}</button>
+                <button key={chip} type="button" className={feedQuery === chip || (chip === 'All' && !feedQuery) ? 'active' : ''} onClick={() => chipSearch(chip)}>{chip}</button>
               ))}
             </nav>
           )}
@@ -801,7 +853,7 @@ export default function Page() {
           {error && <p className="yt-error" role="alert">{error}</p>}
 
           {playerVideo && (
-            <section ref={watchRef} className={minimized ? 'yt-watch yt-watch-min' : 'yt-watch'}>
+            <section ref={watchRef} className={minimized ? 'yt-watch yt-watch-min' : `yt-watch ${theater ? 'theater' : ''}`}>
               <div className="yt-player-col">
                 <div className="yt-watch-back"><button type="button" onClick={exitWatch}><ChevronLeft size={18} /> Back</button></div>
                 <div className="yt-player">
@@ -844,10 +896,7 @@ export default function Page() {
                     <button className="yt-play-pause" type="button" onClick={togglePlayPause} aria-label={playing ? 'Pause' : 'Play'}>{playing ? <Pause size={28} fill="currentColor" /> : <Play size={28} fill="currentColor" />}</button>
                     <button type="button" onClick={playNext} disabled={!canNext} aria-label="Next video"><SkipForward size={24} fill="currentColor" /></button>
                   </div>
-                  <div className="yt-prev-next" aria-label="Video navigation">
-                    <button type="button" onClick={playPrev} disabled={!canPrev}><ChevronLeft size={18} /> Previous</button>
-                    <button type="button" onClick={playNext} disabled={!canNext}>Next <ChevronRight size={18} /></button>
-                  </div>
+                  <button className="yt-pill theater-toggle" type="button" aria-pressed={theater} onClick={() => setTheater(value => !value)}><Monitor size={17} /> Theater mode</button>
                   <button className={`yt-pill ${isLiked ? 'active' : ''}`} type="button" onClick={toggleLike}><ThumbsUp size={17} /> {playerVideo.likeCount ? `${formatCompact(playerVideo.likeCount)} ` : ''}{isLiked ? 'Liked' : 'Like'}</button>
                   <button className={`yt-pill ${isSavedLater ? 'active' : ''}`} type="button" onClick={toggleWatchLater}><Bookmark size={17} /> {isSavedLater ? 'Saved' : 'Watch Later'}</button>
                   <button className="yt-pill" type="button" onClick={shareVideo}><Share2 size={17} /> Share</button>
@@ -877,7 +926,14 @@ export default function Page() {
                 </section>
               </div>
               <aside className="yt-upnext">
-                <h2>Up next</h2>
+                <div className="yt-queue-head"><h2>Up next</h2>
+                  <button className="yt-autoplay" role="switch" aria-checked={autoplay} onClick={() => {
+                    const next = !autoplayRef.current
+                    autoplayRef.current = next
+                    setAutoplay(next)
+                    saveStored(AUTOPLAY_KEY, [next])
+                  }}>Autoplay <span /></button>
+                </div>
                 {upNext.length === 0 && <p className="yt-empty-note">No more videos in this list. Search for more.</p>}
                 {upNext.map((video) => (
                   <button className="yt-upnext-row" key={video.id} onClick={() => playVideo(video, playerQueue)}>
@@ -896,10 +952,17 @@ export default function Page() {
               {!loading && queue.length === 0 && !error && (
                 <div className="yt-empty"><Music2 size={30} /><h2>Search for a song</h2><p>Try “Arijit Singh”, “Bhojpuri songs” or anything you like.</p></div>
               )}
+              {featured && <button className="yt-feature" onClick={() => playVideo(featured, queue)}>
+                <img src={featured.thumbnail} alt="" />
+                <span className="yt-feature-copy"><small><Music2 size={14} /> Featured video</small>
+                  <strong>{featured.title}</strong><span>{featured.channel}</span>
+                  <b><Play size={15} fill="currentColor" /> Watch now</b>
+                </span>
+              </button>}
               {queue.length > 0 && (
                 <div className="yt-section-head"><h2>{homeHead}</h2></div>
               )}
-              <div className="yt-grid">{queue.map((video) => videoCard(video, queue, query.trim() !== ''))}</div>
+              <div className="yt-grid">{(featured ? queue.slice(1) : queue).map((video) => videoCard(video, queue, !!feedQuery))}</div>
               {nextPageToken && <button className="yt-load-more" type="button" onClick={loadMore} disabled={loading}>{loading ? <><LoaderCircle size={16} className="spin" /> Loading more</> : 'Load more videos'}</button>}
             </section>
           )}

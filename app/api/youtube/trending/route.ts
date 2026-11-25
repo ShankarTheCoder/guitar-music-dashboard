@@ -13,11 +13,10 @@ export async function GET(request: Request) {
   const cacheOpt = fresh ? { cache: 'no-store' as const } : { next: { revalidate: 300 } }
 
   const params = new URLSearchParams({
-    part: 'snippet,contentDetails,statistics',
+    part: 'snippet,contentDetails,statistics,status',
     chart: 'mostPopular',
     regionCode: 'IN',
     maxResults: '24',
-    videoEmbeddable: 'true',
     key: apiKey,
   })
   const response = await fetch(`https://www.googleapis.com/youtube/v3/videos?${params}`, {
@@ -39,11 +38,13 @@ export async function GET(request: Request) {
   type RawItem = {
     id: string
     snippet?: { title?: string; channelTitle?: string; channelId?: string; publishedAt?: string; description?: string; thumbnails?: { medium?: { url: string } } }
+    status?: { embeddable?: boolean }
     contentDetails?: { duration?: string }
     statistics?: { viewCount?: string; likeCount?: string; commentCount?: string }
   }
 
   const base = (data.items ?? [] as RawItem[])
+    .filter((item: RawItem) => item.status?.embeddable !== false)
     .map((item: RawItem) => {
       const match = item.contentDetails?.duration?.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/)
       const seconds = match ? Number(match[1] ?? 0) * 3600 + Number(match[2] ?? 0) * 60 + Number(match[3] ?? 0) : 0
