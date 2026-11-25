@@ -20,6 +20,7 @@ type Channel = {
 type Comment = { id: string; author: string; authorImage: string; text: string; likes: number; publishedAt: string; replies?: number }
 type View = 'home' | 'history' | 'liked' | 'trending' | 'subscriptions' | 'watchlater' | 'channel'
 
+const RELOAD_FEED_KEY = 'playtube-reload-feed'
 const HISTORY_KEY = 'playtube-history'
 const LIKED_KEY = 'playtube-liked'
 const WATCH_LATER_KEY = 'playtube-watchlater'
@@ -89,10 +90,7 @@ function formatDate(publishedAt?: string) {
 
 export default function Page() {
   const moreButton = useRef<HTMLButtonElement>(null)
-  const [refreshMessage, setRefreshMessage] = useState('')
-  const refreshBusy = useRef(false)
-  const refreshTimer = useRef<number | undefined>(undefined)
-  useEffect(() => () => window.clearTimeout(refreshTimer.current), [])
+  const reloadTarget = useRef<URLSearchParams | null>(null)
   const [query, setQuery] = useState('')
   const [queue, setQueue] = useState<Result[]>([])
   // Player state is separate from the feed: the feed list (queue) can be
@@ -617,7 +615,28 @@ export default function Page() {
     setSubscriptions(storedSubs)
     autoplayRef.current = loadStored<boolean>(AUTOPLAY_KEY)[0] !== false
     setAutoplay(autoplayRef.current)
-    void loadHomeFeed()
+    if (!reloadTarget.current) {
+      let saved = ''
+      try {
+        saved = sessionStorage.getItem(RELOAD_FEED_KEY) || ''
+        sessionStorage.removeItem(RELOAD_FEED_KEY)
+      } catch { /* Guest browsing also works when session storage is unavailable. */ }
+      reloadTarget.current = new URLSearchParams(saved)
+    }
+    const target = reloadTarget.current
+    const search = target.get('q')
+    const channelId = target.get('channel')
+    if (target.get('view') === 'channel' && channelId) {
+      void openChannel({ id: channelId, name: target.get('name') || '' }, true)
+    } else if (target.get('view') === 'trending') {
+      void loadTrending(true)
+    } else if (search) {
+      setQuery(search)
+      void runSearch(search, true)
+    } else {
+      const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
+      void loadHomeFeed(target.has('view') || navigation?.type === 'reload')
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -780,25 +799,17 @@ export default function Page() {
 
   const browsing = !playerVideo || minimized
   const remoteFeed = browsing && (view === 'home' || view === 'trending' || view === 'channel')
-  async function refreshFeed() {
-    if (refreshBusy.current || !remoteFeed || loading) return
-    refreshBusy.current = true
-    window.clearTimeout(refreshTimer.current)
-    setSidebarOpen(false)
-    setRefreshMessage('Refreshing…')
-    try {
-      let ok: boolean
-      if (view === 'channel' && channelView) ok = await openChannel(channelView, true)
-      else if (view === 'trending') ok = await loadTrending(true)
-      else if (feedQuery) ok = await runSearch(feedQuery, true)
-      else ok = await loadHomeFeed(true)
-      setRefreshMessage(ok ? 'Feed refreshed' : 'Refresh unsuccessful')
-    } finally {
-      refreshBusy.current = false
-      refreshTimer.current = window.setTimeout(() => setRefreshMessage(''), 1800)
+  function refreshFeed() {
+    const target = new URLSearchParams({ view })
+    if (view === 'home' && feedQuery) target.set('q', feedQuery)
+    if (view === 'channel' && channelView) {
+      target.set('channel', channelView.id)
+      target.set('name', channelView.name)
     }
+    try { sessionStorage.setItem(RELOAD_FEED_KEY, target.toString()) } catch { /* Reload Home if storage is unavailable. */ }
+    window.location.reload()
   }
-  const pull = usePullToRefresh(remoteFeed && !loading && !sidebarOpen, refreshFeed)
+  const pull = usePullToRefresh(remoteFeed && !sidebarOpen, refreshFeed)
 
   return (
     <div data-playing={Boolean(playerVideo && playing)} className={`yt-app ${compactRail ? 'compact-rail' : ''}`}>
@@ -842,13 +853,13 @@ export default function Page() {
           <button className={view === 'history' ? 'active' : ''} type="button" onClick={() => openView('history')}><History size={20} /><span>History</span></button>
           <button className={view === 'watchlater' ? 'active' : ''} type="button" onClick={() => openView('watchlater')}><Clock size={20} /><span>Watch Later</span></button>
           <button className={view === 'liked' ? 'active' : ''} type="button" onClick={() => openView('liked')}><ThumbsUp size={20} /><span>Liked videos</span></button>
-          {remoteFeed && <button disabled={loading} onClick={refreshFeed}><RotateCw size={20} /><span>Refresh feed</span></button>}
+          {remoteFeed && <button onClick={refreshFeed}><RotateCw size={20} /><span>Refresh feed</span></button>}
           <p className="yt-side-note">Your library is saved on this device.</p>
         </aside>
         {sidebarOpen && <button className="yt-scrim" type="button" aria-label="Close menu" onClick={() => setSidebarOpen(false)} />}
 
         <main className="yt-main" ref={pull.surface} data-refreshable={remoteFeed || undefined}>
-          {remoteFeed && (pull.hint || refreshMessage) && <div role="status" className="pull-feedback">{pull.hint || refreshMessage}</div>}
+          {remoteFeed && pull.hint && <div role="status" className="pull-feedback">{pull.hint}</div>}
           {loading && queue.length > 0 && <div role="status" className="feed-progress" aria-label="Updating feed" />}
           {view === 'home' && (!playerVideo || minimized) && (
             <nav className="yt-chips" aria-label="Categories">
