@@ -142,6 +142,8 @@ export default function Page() {
   const [moreBase, setMoreBase] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [localMusicAvailable, setLocalMusicAvailable] = useState(false)
+  useEffect(() => { setLocalMusicAvailable(navigator.userAgent.includes('PlayTubeLocalMusic/1')) }, [])
   const [playing, setPlaying] = useState(false)
   const [listening, setListening] = useState(false)
   const [voiceSupported, setVoiceSupported] = useState(true)
@@ -896,6 +898,7 @@ export default function Page() {
           <a className="yt-external-nav" href="https://www.youtube.com/shorts/" target="_blank" rel="noreferrer"><Play size={20} /><span>Shorts ↗</span></a>
           <a className="yt-external-nav" href="https://www.youtube.com/live" target="_blank" rel="noreferrer"><Video size={20} /><span>Live ↗</span></a>
           <h2 className="yt-nav-label">Your library</h2>
+          {localMusicAvailable && <a className="yt-external-nav" href="/local-music"><Music2 size={20} /><span>Local music</span></a>}
           <button className={view === 'history' ? 'active' : ''} type="button" onClick={() => openView('history')}><History size={20} /><span>History</span></button>
           <button className={view === 'watchlater' ? 'active' : ''} type="button" onClick={() => openView('watchlater')}><Clock size={20} /><span>Watch Later</span></button>
           <button className={view === 'liked' ? 'active' : ''} type="button" onClick={() => openView('liked')}><ThumbsUp size={20} /><span>Liked videos</span></button>

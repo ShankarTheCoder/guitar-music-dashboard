@@ -3,6 +3,8 @@ package com.guitarplay.app;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.PictureInPictureParams;
+import android.content.Intent;
+import android.webkit.WebResourceRequest;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
@@ -32,7 +34,19 @@ public final class MainActivity extends Activity {
         webView.getSettings().setJavaScriptEnabled(true);
         webView.getSettings().setDomStorageEnabled(true);
         webView.getSettings().setMediaPlaybackRequiresUserGesture(false);
+        webView.getSettings().setUserAgentString(webView.getSettings().getUserAgentString() + " PlayTubeLocalMusic/1");
         webView.setWebViewClient(new WebViewClient() {
+            @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                if (request.isForMainFrame() && request.hasGesture() && isDashboard(view.getUrl())
+                        && (ORIGIN + "/local-music").equals(request.getUrl().toString())) {
+                    view.evaluateJavascript("document.querySelector('.yt-player iframe')?.contentWindow.postMessage(JSON.stringify({event:'command',func:'pauseVideo',args:[]}),'https://www.youtube.com')", null);
+                    setPlaying(false);
+                    startActivity(new Intent(MainActivity.this, LocalMusicActivity.class));
+                    return true;
+                }
+                return false;
+            }
+
             @Override public void onPageStarted(WebView view, String url, Bitmap icon) {
                 navigation++;
                 disconnectPlayback();
