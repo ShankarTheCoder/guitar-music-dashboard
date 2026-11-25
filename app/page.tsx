@@ -177,7 +177,7 @@ export default function Page() {
     if (!video) return
     playerIndexRef.current = index
     setPlayerIndex(index)
-    setPlaying(true)
+    if (playerVideoRef.current?.id !== video.id) setPlaying(false)
     if (!minimizedRef.current) setView('home')
     setDescExpanded(false)
     rememberPlayed(video)
@@ -186,10 +186,11 @@ export default function Page() {
   function playVideo(video: Result, list: Result[]) {
     const index = list.findIndex((v) => v.id === video.id)
     if (index < 0) return
-    backViewRef.current = view
+    if (!playerVideo || minimized) backViewRef.current = view
     playerQueueRef.current = list
     setPlayerQueue(list)
-    minimizePlayer()
+    minimizedRef.current = false
+    setMinimized(false)
     playAt(index)
   }
 
@@ -551,7 +552,6 @@ export default function Page() {
   }
 
   function startVideoPlayback() {
-    if (!playing) setPlaying(true)
     const player = videoRef.current?.contentWindow
     if (!player) return
     const setup = JSON.stringify({ event: 'listening', id: '1', channel: 'channel' })
@@ -560,8 +560,7 @@ export default function Page() {
     player.postMessage(listener, 'https://www.youtube.com')
     player.postMessage(setup, 'https://www.youtube-nocookie.com')
     player.postMessage(listener, 'https://www.youtube-nocookie.com')
-    window.setTimeout(() => sendPlayerCommand('playVideo'), 150)
-    window.setTimeout(() => sendPlayerCommand('playVideo'), 600)
+    player.postMessage(JSON.stringify({ event: 'command', func: 'addEventListener', args: ['onError'] }), 'https://www.youtube.com')
   }
 
   // Home feed is YouTube's own recommendations: India's most-popular
@@ -716,8 +715,9 @@ export default function Page() {
       if (event.origin !== 'https://www.youtube.com' || event.source !== videoRef.current?.contentWindow) return
       let message: { event?: string; info?: number }
       try { message = typeof event.data === 'string' ? JSON.parse(event.data) : event.data } catch { return }
+      if (message?.event === 'onError') setPlaying(false)
       if (message?.event !== 'onStateChange') return
-      if (message.info === 1 || message.info === 2) setPlaying(message.info === 1)
+      if (message.info !== 3) setPlaying(message.info === 1)
       if (message.info !== 0) return
       if (autoplayRef.current && playerIndexRef.current < playerQueueRef.current.length - 1) playAt(playerIndexRef.current + 1)
       else setPlaying(false)
@@ -777,7 +777,7 @@ export default function Page() {
   const browsing = !playerVideo || minimized
 
   return (
-    <div className={`yt-app ${compactRail ? 'compact-rail' : ''}`}>
+    <div data-playing={Boolean(playerVideo && playing)} className={`yt-app ${compactRail ? 'compact-rail' : ''}`}>
       <header className={`yt-topbar ${mobileSearch ? 'mobile-search-open' : ''}`}>
         <button className="yt-icon-btn" type="button" onClick={() => window.matchMedia('(max-width: 760px)').matches ? setSidebarOpen(open => !open) : setCompactRail(compact => !compact)} aria-label="Menu"><Menu size={22} /></button>
         <button className="yt-logo" type="button" onClick={goHome} aria-label="PlayTube home">
