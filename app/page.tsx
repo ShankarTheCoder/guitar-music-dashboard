@@ -88,8 +88,41 @@ function formatDate(publishedAt?: string) {
   return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+// A fresh request for page one often returns the identical YouTube chart.
+async function fetchFeedPage(base: string, fresh: boolean, refresh?: URLSearchParams) {
+  const seen = new Set(refresh?.getAll('seen') ?? [])
+  let cursor = refresh?.get('cursor') || ''
+  const tried = new Set<string>()
+  let fallback: Result[] = []
+  let nextPageToken: string | null = null
+  while (tried.size < 3 && !tried.has(cursor)) {
+    tried.add(cursor)
+    const url = new URL(base, window.location.origin)
+    if (fresh) url.searchParams.set('fresh', '1')
+    if (cursor) url.searchParams.set('pageToken', cursor)
+    const response = await fetch(url, fresh ? { cache: 'no-store' } : undefined)
+    const data = await response.json()
+    if (!response.ok) {
+      if (cursor && response.status === 400 && !tried.has('')) {
+        cursor = ''
+        continue
+      }
+      throw new Error(data.error || 'Could not load videos.')
+    }
+    const batch: Result[] = (data.items ?? []).map(normalize)
+    nextPageToken = data.nextPageToken || null
+    if (!seen.size) return { items: batch, nextPageToken, repeated: false }
+    const items = batch.filter(video => !seen.has(video.id))
+    if (items.length) return { items, nextPageToken, repeated: false }
+    if (!fallback.length) fallback = batch
+    cursor = nextPageToken || ''
+  }
+  return { items: fallback, nextPageToken, repeated: true }
+}
+
 export default function Page() {
   const moreButton = useRef<HTMLButtonElement>(null)
+  const [feedNotice, setFeedNotice] = useState('')
   const reloadTarget = useRef<URLSearchParams | null>(null)
   const [query, setQuery] = useState('')
   const [queue, setQueue] = useState<Result[]>([])
@@ -284,23 +317,23 @@ export default function Page() {
     saveStored(HISTORY_KEY, updated)
   }
 
-  async function runSearch(searchText: string, fresh = false): Promise<boolean> {
+  async function runSearch(searchText: string, fresh = false, refresh?: URLSearchParams): Promise<boolean> {
     const value = searchText.trim()
     if (!value) return false
     if (playerVideo) minimizePlayer()
     const request = ++requestId.current
     setLoading(true)
     setError('')
+    setFeedNotice('')
     setView('home')
     setFeedQuery(value)
     setNextPageToken(null)
     setHomeHead(`Results for “${value}”`)
     try {
-      const response = await fetch(`/api/youtube/search?q=${encodeURIComponent(value)}${fresh ? '&fresh=1' : ''}`, fresh ? { cache: 'no-store' } : undefined)
-      const data = await response.json()
+      const data = await fetchFeedPage(`/api/youtube/search?q=${encodeURIComponent(value)}`, fresh, refresh)
       if (request !== requestId.current) return false
-      if (!response.ok) throw new Error(data.error ?? 'Search failed')
-      syncQueue((data.items ?? []).map(normalize))
+      syncQueue(data.items)
+      if (data.repeated) setFeedNotice('No additional videos found on this refresh.')
       setNextPageToken(data.nextPageToken ?? null)
       setMoreBase(`/api/youtube/search?q=${encodeURIComponent(value)}`)
       return true
@@ -357,18 +390,18 @@ export default function Page() {
     return () => observer.disconnect()
   }, [loading, nextPageToken, error, view, minimized, playerVideo])
 
-  async function loadTrending(fresh = false): Promise<boolean> {
+  async function loadTrending(fresh = false, refresh?: URLSearchParams): Promise<boolean> {
     if (playerVideo) minimizePlayer()
     const request = ++requestId.current
     setLoading(true)
     setError('')
+    setFeedNotice('')
     setView('trending')
     try {
-      const response = await fetch(`/api/youtube/trending${fresh ? '?fresh=1' : ''}`, fresh ? { cache: 'no-store' } : undefined)
-      const data = await response.json()
+      const data = await fetchFeedPage('/api/youtube/trending', fresh, refresh)
       if (request !== requestId.current) return false
-      if (!response.ok) throw new Error(data.error ?? 'Could not load trending videos')
-      syncQueue((data.items ?? []).map(normalize))
+      syncQueue(data.items)
+      if (data.repeated) setFeedNotice('No additional videos found on this refresh.')
       setNextPageToken(data.nextPageToken ?? null)
       setMoreBase('/api/youtube/trending')
       return true
@@ -382,7 +415,7 @@ export default function Page() {
     }
   }
 
-  async function openChannel(channel: Channel, fresh = false): Promise<boolean> {
+  async function openChannel(channel: Channel, fresh = false, refresh?: URLSearchParams): Promise<boolean> {
     if (!channel.id) return false
     if (playerVideo) minimizePlayer()
     setChannelView(channel)
@@ -390,6 +423,7 @@ export default function Page() {
     const request = ++requestId.current
     setLoading(true)
     setError('')
+    setFeedNotice('')
     // Channel page header details (avatar, banner, subscribers, counts).
     fetch(`/api/youtube/channel?id=${encodeURIComponent(channel.id)}${fresh ? '&fresh=1' : ''}`, fresh ? { cache: 'no-store' } : undefined)
       .then((r) => r.json().then((d) => ({ ok: r.ok, data: d })))
@@ -402,11 +436,10 @@ export default function Page() {
       })
       .catch(() => {})
     try {
-      const response = await fetch(`/api/youtube/search?channelId=${encodeURIComponent(channel.id)}${fresh ? '&fresh=1' : ''}`, fresh ? { cache: 'no-store' } : undefined)
-      const data = await response.json()
+      const data = await fetchFeedPage(`/api/youtube/search?channelId=${encodeURIComponent(channel.id)}`, fresh, refresh)
       if (request !== requestId.current) return false
-      if (!response.ok) throw new Error(data.error ?? 'Could not load channel videos')
-      syncQueue((data.items ?? []).map(normalize))
+      syncQueue(data.items)
+      if (data.repeated) setFeedNotice('No additional videos found on this refresh.')
       setNextPageToken(data.nextPageToken ?? null)
       setMoreBase(`/api/youtube/search?channelId=${encodeURIComponent(channel.id)}`)
       return true
@@ -542,6 +575,10 @@ export default function Page() {
   // recommendations — and leaves any playing video behind.
   function goHome() {
     setSidebarOpen(false)
+    if (view === 'home' && !feedQuery && (!playerVideo || minimized) && queue.length) {
+      refreshFeed()
+      return
+    }
     void loadHomeFeed(true)
   }
 
@@ -568,20 +605,20 @@ export default function Page() {
   // Home feed is YouTube's own recommendations: India's most-popular
   // videos, straight from YouTube — not picks built from this device's
   // watch history. Search and chips still work exactly as before.
-  async function loadHomeFeed(fresh = false): Promise<boolean> {
+  async function loadHomeFeed(fresh = false, refresh?: URLSearchParams): Promise<boolean> {
     if (playerVideo) minimizePlayer()
     const request = ++requestId.current
     setLoading(true)
     setError('')
+    setFeedNotice('')
     setView('home')
     setQuery('')
     setFeedQuery('')
     try {
-      const response = await fetch(`/api/youtube/trending${fresh ? '?fresh=1' : ''}`, fresh ? { cache: 'no-store' } : undefined)
-      const data = await response.json()
+      const data = await fetchFeedPage('/api/youtube/trending', fresh, refresh)
       if (request !== requestId.current) return false
-      if (!response.ok) throw new Error(data.error ?? 'Could not load home feed')
-      syncQueue((data.items ?? []).map(normalize))
+      syncQueue(data.items)
+      if (data.repeated) setFeedNotice('No additional videos found on this refresh.')
       setHomeHead('Trending in India')
       setNextPageToken(data.nextPageToken ?? null)
       setMoreBase('/api/youtube/trending')
@@ -627,15 +664,15 @@ export default function Page() {
     const search = target.get('q')
     const channelId = target.get('channel')
     if (target.get('view') === 'channel' && channelId) {
-      void openChannel({ id: channelId, name: target.get('name') || '' }, true)
+      void openChannel({ id: channelId, name: target.get('name') || '' }, true, target)
     } else if (target.get('view') === 'trending') {
-      void loadTrending(true)
+      void loadTrending(true, target)
     } else if (search) {
       setQuery(search)
-      void runSearch(search, true)
+      void runSearch(search, true, target)
     } else {
       const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
-      void loadHomeFeed(target.has('view') || navigation?.type === 'reload')
+      void loadHomeFeed(target.has('view') || navigation?.type === 'reload', target)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -806,6 +843,11 @@ export default function Page() {
       target.set('channel', channelView.id)
       target.set('name', channelView.name)
     }
+    if (nextPageToken) target.set('cursor', nextPageToken)
+    const previous = reloadTarget.current
+    const sameFeed = previous && ['view', 'q', 'channel'].every(key => previous.get(key) === target.get(key))
+    const ids = new Set([...(sameFeed ? previous.getAll('seen') : []), ...queue.map(video => video.id)])
+    for (const id of Array.from(ids).slice(-300)) target.append('seen', id)
     try { sessionStorage.setItem(RELOAD_FEED_KEY, target.toString()) } catch { /* Reload Home if storage is unavailable. */ }
     window.location.reload()
   }
@@ -834,6 +876,10 @@ export default function Page() {
             title={listening ? 'Stop voice search' : voiceSupported ? 'Search by voice' : 'Voice search works in Chrome, Edge, and Safari'}
           ><Mic size={20} /></button>
         </div>
+        {remoteFeed && <button type="button" className="yt-icon-btn feed-refresh-button"
+          aria-label="Refresh videos" title="Refresh videos" onClick={refreshFeed} disabled={loading}>
+          <RotateCw size={20} className={loading ? 'spin' : undefined} />
+        </button>}
       </header>
 
       {browsing && <nav className="mobile-dock" aria-label="Bottom navigation">
@@ -869,6 +915,7 @@ export default function Page() {
             </nav>
           )}
 
+          {remoteFeed && feedNotice && <p role="status" className="yt-empty-note">{feedNotice}</p>}
           {error && <p className="yt-error" role="alert">{error}</p>}
 
           {playerVideo && (
