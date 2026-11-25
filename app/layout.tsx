@@ -75,6 +75,9 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   colorScheme: 'light dark',
+  // Edge-to-edge on Android: lets env(safe-area-inset-*) report the real
+  // gesture-bar height so the fixed bottom dock sits above it.
+  viewportFit: 'cover',
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: 'white' },
     { media: '(prefers-color-scheme: dark)', color: 'black' },

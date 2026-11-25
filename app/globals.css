@@ -64,6 +64,9 @@ button { color: inherit; cursor: pointer; }
 @media (max-width:700px) { .youtube-header { margin:0 -11px; padding:0 11px; }.youtube-hero { padding-top:48px; }.results-grid { grid-template-columns:1fr; gap:14px; }.youtube-result { display:flex; gap:10px; padding:9px; border-radius:10px; background:#212121; }.youtube-result > span:last-child { padding:0; }.result-thumbnail { width:132px; height:74px; flex-basis:132px; }.youtube-result strong { font-size:12px; }.youtube-results { padding:12px; } }
 
 /* ---- PlayTube YouTube-clone shell ---- */
+/* No page-level horizontal scroll: a sticky header must never be pushed
+   off-screen by a wide child. `clip` (unlike `hidden`) keeps sticky working. */
+html, body { overflow-x: clip; }
 .yt-app { min-height: 100vh; background: #0f0f0f; color: #f1f1f1; }
 .yt-topbar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 10px; height: 60px; padding: 0 14px; background: rgba(15,15,15,.97); border-bottom: 1px solid #272727; }
 .yt-icon-btn { display: grid; place-items: center; width: 40px; height: 40px; border: 0; border-radius: 50%; background: transparent; color: #f1f1f1; cursor: pointer; }
@@ -90,7 +93,7 @@ button { color: inherit; cursor: pointer; }
 .yt-side-note { color: #717171; font-size: 11px; line-height: 1.5; padding: 14px 12px; }
 .yt-scrim { display: none; }
 .yt-main { flex: 1; min-width: 0; padding: 16px 20px 40px; }
-.yt-chips { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 14px; scrollbar-width: none; }
+.yt-chips { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 14px; scrollbar-width: none; -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent 100%); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent 100%); }
 .yt-chips::-webkit-scrollbar { display: none; }
 .yt-chips button { flex: 0 0 auto; border: 0; border-radius: 8px; background: #272727; color: #f1f1f1; font: inherit; font-size: 13px; font-weight: 600; padding: 8px 13px; cursor: pointer; }
 .yt-chips button.active { background: #f1f1f1; color: #0f0f0f; }
@@ -368,3 +371,15 @@ html.android-pip .yt-player-col > :not(.yt-player),
 html.android-pip .yt-watch .yt-upnext { display: none; }
 
 .pull-feedback { position: fixed; top: 68px; left: 50%; transform: translateX(-50%); z-index: 24; padding: 8px 16px; border-radius: 24px; background: #333; color: #fff; box-shadow: 0 2px 8px #0007; font-size: 14px; pointer-events: none; }
+
+.feed-refresh-button { flex: 0 0 auto; background: #272727; }
+
+/* Narrow phones: the header row (menu + logo + search + mic + refresh) must
+   fit with room to spare, or the refresh button gets clipped off the edge.
+   Kept last in the file so it wins over the wider mobile rules above. */
+@media (max-width: 400px) {
+  .yt-topbar { padding-inline: 8px; gap: 2px; }
+  .yt-logo { font-size: 17px; gap: 4px; }
+  .yt-logo > span { width: 28px; height: 28px; }
+  .yt-search-wrap { gap: 2px; }
+}
