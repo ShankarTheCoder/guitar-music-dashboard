@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   Bell, Bookmark, ChevronLeft, ChevronUp, Clock, Flame, History, Home, LoaderCircle,
-  Menu, MessageSquare, Mic, Music2, Pause, Play, Search, Share2, SkipBack, SkipForward,
-  ThumbsUp, Trash2, Users, X, Monitor, Check, Video,
+  Menu, MessageSquare, Mic, Music2, Play, Search, Share2, SkipBack, SkipForward,
+  ThumbsUp, Trash2, Users, X, Monitor, Check, Video, Library,
 } from 'lucide-react'
 
 type Result = {
@@ -95,6 +95,9 @@ export default function Page() {
   // searched and browsed while a song keeps playing in the mini-player.
   const [playerQueue, setPlayerQueue] = useState<Result[]>([])
   const [playerIndex, setPlayerIndex] = useState(-1)
+  const [mobileSearch, setMobileSearch] = useState(false)
+  const searchInput = useRef<HTMLInputElement>(null)
+  useEffect(() => { if (mobileSearch) searchInput.current?.focus() }, [mobileSearch])
   const [minimized, setMinimized] = useState(false)
   const [nextPageToken, setNextPageToken] = useState<string | null>(null)
   // The exact list "Load more" continues: the search or channel that produced
@@ -186,8 +189,7 @@ export default function Page() {
     backViewRef.current = view
     playerQueueRef.current = list
     setPlayerQueue(list)
-    minimizedRef.current = false
-    setMinimized(false)
+    minimizePlayer()
     playAt(index)
   }
 
@@ -312,6 +314,7 @@ export default function Page() {
 
   async function searchYouTube(event: React.FormEvent, submittedQuery = query) {
     event.preventDefault()
+    setMobileSearch(false)
     await runSearch(submittedQuery)
   }
 
@@ -561,17 +564,6 @@ export default function Page() {
     window.setTimeout(() => sendPlayerCommand('playVideo'), 600)
   }
 
-  function togglePlayPause() {
-    if (!playerVideo) return
-    if (playing) {
-      sendPlayerCommand('pauseVideo')
-      setPlaying(false)
-    } else {
-      sendPlayerCommand('playVideo')
-      setPlaying(true)
-    }
-  }
-
   // Home feed is YouTube's own recommendations: India's most-popular
   // videos, straight from YouTube — not picks built from this device's
   // watch history. Search and chips still work exactly as before.
@@ -761,7 +753,6 @@ export default function Page() {
       <button className="yt-card" onClick={() => playVideo(video, list)}>
         <span className="yt-thumb">
           {video.thumbnail && <img src={video.thumbnail} alt="" loading="lazy" />}
-          <i><Play size={16} fill="currentColor" /></i>
           {video.duration !== '—' && <b>{video.duration}</b>}
         </span>
         <span className="yt-card-row">
@@ -783,18 +774,20 @@ export default function Page() {
   }
 
 
-  const featured = view === 'home' && !feedQuery && queue.length > 1 ? queue[0] : null
+  const browsing = !playerVideo || minimized
 
   return (
     <div className={`yt-app ${compactRail ? 'compact-rail' : ''}`}>
-      <header className="yt-topbar">
+      <header className={`yt-topbar ${mobileSearch ? 'mobile-search-open' : ''}`}>
         <button className="yt-icon-btn" type="button" onClick={() => window.matchMedia('(max-width: 760px)').matches ? setSidebarOpen(open => !open) : setCompactRail(compact => !compact)} aria-label="Menu"><Menu size={22} /></button>
         <button className="yt-logo" type="button" onClick={goHome} aria-label="PlayTube home">
           <span><Play size={18} fill="currentColor" /></span><strong>PlayTube</strong>
         </button>
+        <button className="yt-icon-btn mobile-search-toggle" aria-label="Open search" onClick={() => setMobileSearch(true)}><Search size={22} /></button>
+        <button className="yt-icon-btn mobile-search-back" aria-label="Close search" onClick={() => setMobileSearch(false)}><ChevronLeft size={22} /></button>
         <div className="yt-search-wrap">
           <form className="yt-search" onSubmit={searchYouTube}>
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search" aria-label="Search" />
+            <input ref={searchInput} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search" aria-label="Search" />
             {query.trim() && <button className="yt-search-clear" type="button" onClick={clearSearch} aria-label="Clear search"><X size={17} /></button>}
             <button className="yt-search-btn" type="submit" disabled={loading || !query.trim()} aria-label="Search"><Search size={19} /></button>
           </form>
@@ -808,6 +801,12 @@ export default function Page() {
         </div>
       </header>
 
+      {browsing && <nav className="mobile-dock" aria-label="Bottom navigation">
+        <button aria-current={view === 'home' ? 'page' : undefined} onClick={goHome}><Home size={21} />Home</button>
+        <button aria-current={view === 'trending' ? 'page' : undefined} onClick={() => loadTrending()}><Flame size={21} />Trending</button>
+        <button aria-current={view === 'subscriptions' ? 'page' : undefined} onClick={() => openView('subscriptions')}><Users size={21} />Subscriptions</button>
+        <button aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(open => !open)}><Library size={21} />Library</button>
+      </nav>}
       <div className="yt-body">
         <aside className={`yt-sidebar ${sidebarOpen ? 'open' : ''}`}>
           <button className={view === 'home' ? 'active' : ''} type="button" onClick={goHome}><Home size={20} /><span>Home</span></button>
@@ -849,7 +848,7 @@ export default function Page() {
           {playerVideo && (
             <section ref={watchRef} className={minimized ? 'yt-watch yt-watch-min' : `yt-watch ${theater ? 'theater' : ''}`}>
               <div className="yt-player-col">
-                <div className="yt-watch-back"><button type="button" onClick={exitWatch}><ChevronLeft size={18} /> Back</button></div>
+                <div className="yt-watch-back"><button type="button" onClick={exitWatch}><ChevronLeft size={18} /> Back to browsing</button></div>
                 <div className="yt-player">
                   <iframe
                     ref={videoRef}
@@ -887,7 +886,6 @@ export default function Page() {
                 <div className="yt-watch-actions">
                   <div className="yt-transport" aria-label="Playback controls">
                     <button type="button" onClick={playPrev} disabled={!canPrev} aria-label="Previous video"><SkipBack size={24} fill="currentColor" /></button>
-                    <button className="yt-play-pause" type="button" onClick={togglePlayPause} aria-label={playing ? 'Pause' : 'Play'}>{playing ? <Pause size={28} fill="currentColor" /> : <Play size={28} fill="currentColor" />}</button>
                     <button type="button" onClick={playNext} disabled={!canNext} aria-label="Next video"><SkipForward size={24} fill="currentColor" /></button>
                   </div>
                   <button className="yt-pill theater-toggle" type="button" aria-pressed={theater} onClick={() => setTheater(value => !value)}><Monitor size={17} /> Theater mode</button>
@@ -897,7 +895,6 @@ export default function Page() {
                   {shareNote && <span className="yt-share-note">{shareNote}</span>}
                 </div>
                 <div className="yt-mini-controls">
-                  <button type="button" onClick={togglePlayPause} aria-label={playing ? 'Pause' : 'Play'}>{playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}</button>
                   <button type="button" onClick={expandPlayer} aria-label="Expand player"><ChevronUp size={18} /></button>
                   <button type="button" onClick={closePlayer} aria-label="Stop and close player"><X size={18} /></button>
                 </div>
@@ -938,7 +935,7 @@ export default function Page() {
               </aside>
             </section>
           )}
-          {playerVideo && minimized && <div className="yt-mini-spacer" />}
+
 
           {view === 'home' && (!playerVideo || minimized) && (
             <section aria-label="Videos">
@@ -946,17 +943,10 @@ export default function Page() {
               {!loading && queue.length === 0 && !error && (
                 <div className="yt-empty"><Music2 size={30} /><h2>Search for a song</h2><p>Try “Arijit Singh”, “Bhojpuri songs” or anything you like.</p></div>
               )}
-              {featured && <button className="yt-feature" onClick={() => playVideo(featured, queue)}>
-                <img src={featured.thumbnail} alt="" />
-                <span className="yt-feature-copy"><small><Music2 size={14} /> Featured video</small>
-                  <strong>{featured.title}</strong><span>{featured.channel}</span>
-                  <b><Play size={15} fill="currentColor" /> Watch now</b>
-                </span>
-              </button>}
-              {queue.length > 0 && (
+              {queue.length > 0 && (feedQuery || error) && (
                 <div className="yt-section-head"><h2>{homeHead}</h2></div>
               )}
-              <div className="yt-grid">{(featured ? queue.slice(1) : queue).map((video) => videoCard(video, queue, !!feedQuery))}</div>
+              <div className="yt-grid">{queue.map((video) => videoCard(video, queue, !!feedQuery))}</div>
               {nextPageToken && <button ref={moreButton} className="yt-load-more" type="button" onClick={loadMore} disabled={loading}>{loading ? <><LoaderCircle size={16} className="spin" /> Loading more</> : 'Load more videos'}</button>}
             </section>
           )}

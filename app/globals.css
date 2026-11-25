@@ -322,3 +322,40 @@ button { color: inherit; cursor: pointer; }
 .account-help p { margin: 12px 0; }
 .account-help a { text-decoration: underline; }
 @media (min-width: 761px) { .compact-rail .yt-external-nav { flex-direction: column; gap: 4px; font-size: 10px; } }
+
+/* Home feed and the in-app floating player. */
+.yt-topbar { border-bottom: 0; }
+.yt-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 285px), 1fr)); gap: 32px 16px; }
+.yt-card-row { padding-top: 12px; gap: 12px; }
+.yt-card-text strong { font-size: 16px; line-height: 1.4; font-weight: 600; }
+.yt-card-text small { font-size: 13px; }
+.yt-watch-min { inset: auto 20px 20px auto; width: min(380px, calc(100vw - 24px)); display: block; padding: 0; border: 1px solid #414141; border-radius: 14px; overflow: hidden; background: #181818; box-shadow: 0 8px 32px #0009; }
+.yt-watch-min .yt-player-col { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0; }
+.yt-watch-min .yt-player { grid-column: 1 / -1; width: 100%; height: auto; aspect-ratio: 16 / 9; border-radius: 0; }
+.yt-watch-min .yt-watch-title { margin-inline: 12px 4px; }
+.yt-watch-min .yt-mini-controls { padding: 4px; }
+.yt-mini-controls button { background: transparent; }
+.yt-transport button { width: 38px; height: 38px; }
+.mobile-dock, .mobile-search-back, .mobile-search-toggle { display: none; }
+.yt-main:has(.yt-watch-min) { padding-bottom: 300px; }
+@media (max-width: 760px) {
+  .yt-topbar { padding-inline: 12px; }
+  .yt-logo strong { display: inline; }
+  .yt-topbar .yt-search-wrap { flex: none; }
+  .yt-topbar .yt-search { display: none; }
+  .mobile-search-toggle { display: grid; margin-left: auto; }
+  .mobile-search-open .yt-logo, .mobile-search-open > button:first-child, .mobile-search-open .mobile-search-toggle { display: none; }
+  .mobile-search-open .mobile-search-back { display: grid; }
+  .mobile-search-open .yt-search-wrap { flex: 1; }
+  .mobile-search-open .yt-search { display: flex; }
+  .yt-main { padding-bottom: 80px; }
+  .yt-grid { grid-template-columns: 1fr; margin-inline: -12px; gap: 24px; }
+  .yt-card-row { padding-inline: 12px; }
+  .yt-thumb { border-radius: 0; }
+  .mobile-dock { position: fixed; inset: auto 0 0; z-index: 22; height: calc(56px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(4,1fr); background: #0f0f0f; border-top: 1px solid #303030; padding-bottom: env(safe-area-inset-bottom); }
+  .mobile-dock button { display: grid; justify-items: center; align-content: center; gap: 3px; font-size: 10px; color: #bdbdbd; }
+  .mobile-dock button[aria-current="page"] { color: white; font-weight: 700; }
+  .mobile-dock button[aria-current="page"] svg { stroke-width: 2.7; }
+  .yt-watch-min { bottom: calc(66px + env(safe-area-inset-bottom)); right: 10px; width: min(68vw, 320px); }
+  .yt-watch-min .yt-watch-title { font-size: 12px; }
+}
