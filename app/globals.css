@@ -297,3 +297,28 @@ button { color: inherit; cursor: pointer; }
 @media (prefers-reduced-motion: reduce) {
   .yt-app *, .yt-app *::after { transition-duration: 0s !important; }
 }
+
+.account-control { position: relative; flex-shrink: 0; }
+.account-button { display: flex; align-items: center; gap: 7px; padding: 7px 12px; border: 1px solid #454545; border-radius: 24px; color: #9dcaff; }
+.account-button span { max-width: 130px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+.account-menu { position: absolute; right: 0; top: calc(100% + 8px); width: 208px; display: grid; padding: 10px; background: #242424; border: 1px solid #494949; border-radius: 12px; box-shadow: 0 8px 26px #0008; }
+.account-menu > * { text-align: left; padding: 9px; }
+.account-menu button:hover, .account-menu a:hover { background: #383838; border-radius: 6px; }
+.account-notice, .account-form { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+.account-notice { justify-content: space-between; padding: 12px 16px; background: #252525; border-radius: 10px; }
+.account-form input, .account-select { min-width: 0; background: #202020; border: 1px solid #555; padding: 8px 12px; border-radius: 8px; }
+.account-form input { flex: 1; }
+.account-form button { background: #eee; color: #171717; padding: 8px 14px; border-radius: 20px; }
+.account-form button:disabled { opacity: .5; }
+.account-form small { flex-basis: 100%; }
+.account-library .yt-page-head { margin-top: 14px; }
+.feed-progress { height: 2px; background: linear-gradient(90deg, transparent, #ff0033, transparent); position: fixed; inset: 59px 0 auto; z-index: 21; }
+@media (max-width: 600px) { .account-button { padding: 7px; } .account-button span { display: none; } .yt-topbar { gap: 3px; } }
+@media (pointer: coarse) { html:has(.yt-chips) { overscroll-behavior-y: contain; } }
+.yt-external-nav { display: flex; align-items: center; gap: 18px; padding: 10px 12px; border-radius: 10px; font-size: 14px; }
+.yt-external-nav:hover { background: #272727; }
+.account-help { max-width: 600px; margin: 15vh auto; padding: 24px; }
+.account-help h1 { font-size: 28px; font-weight: 650; }
+.account-help p { margin: 12px 0; }
+.account-help a { text-decoration: underline; }
+@media (min-width: 761px) { .compact-rail .yt-external-nav { flex-direction: column; gap: 4px; font-size: 10px; } }

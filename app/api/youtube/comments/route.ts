@@ -17,7 +17,7 @@ export async function GET(request: Request) {
   })
   const response = await fetch(`https://www.googleapis.com/youtube/v3/commentThreads?${params}`, {
     headers: { Referer: referer },
-    next: { revalidate: 300 },
+    ...(new URL(request.url).searchParams.get('fresh') === '1' ? { cache: 'no-store' as const } : { next: { revalidate: 300 } }),
   })
   const data = await response.json()
   if (!response.ok) return NextResponse.json({ error: data.error?.message ?? 'Could not load comments.' }, { status: response.status })

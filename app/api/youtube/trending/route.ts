@@ -19,6 +19,8 @@ export async function GET(request: Request) {
     maxResults: '24',
     key: apiKey,
   })
+  const pageToken = new URL(request.url).searchParams.get('pageToken')
+  if (pageToken) params.set('pageToken', pageToken)
   const response = await fetch(`https://www.googleapis.com/youtube/v3/videos?${params}`, {
     headers: { Referer: referer },
     ...cacheOpt,
@@ -90,5 +92,5 @@ export async function GET(request: Request) {
     channelAvatar: avatars.get(item.channelId as string) ?? '',
   }))
 
-  return NextResponse.json({ items, nextPageToken: null })
+  return NextResponse.json({ items, nextPageToken: data.nextPageToken ?? null })
 }

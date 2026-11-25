@@ -1,10 +1,14 @@
 'use client'
 
+import Script from 'next/script'
+import { clientId, useYouTubeAccount } from '@/lib/youtube-account'
+import { YouTubeLibrary } from '@/components/youtube-library'
+import { YouTubeToggle, PlaylistSave, CommentForm } from '@/components/youtube-actions'
 import { useEffect, useRef, useState } from 'react'
 import {
   Bell, Bookmark, ChevronLeft, ChevronUp, Clock, Flame, History, Home, LoaderCircle,
   Menu, MessageSquare, Mic, Music2, Pause, Play, Search, Share2, SkipBack, SkipForward,
-  ThumbsUp, Trash2, Users, X, Monitor, Check,
+  ThumbsUp, Trash2, Users, X, Monitor, Check, ListMusic, Video, CircleUserRound,
 } from 'lucide-react'
 
 type Result = {
@@ -17,7 +21,7 @@ type Channel = {
   avatar?: string; handle?: string; subs?: string; videos?: string; description?: string; banner?: string
 }
 type Comment = { id: string; author: string; authorImage: string; text: string; likes: number; publishedAt: string; replies?: number }
-type View = 'home' | 'history' | 'liked' | 'trending' | 'subscriptions' | 'watchlater' | 'channel'
+type View = 'home' | 'history' | 'liked' | 'trending' | 'subscriptions' | 'watchlater' | 'channel' | 'playlists' | 'uploads'
 
 const HISTORY_KEY = 'playtube-history'
 const LIKED_KEY = 'playtube-liked'
@@ -87,6 +91,12 @@ function formatDate(publishedAt?: string) {
 }
 
 export default function Page() {
+  const account = useYouTubeAccount()
+  const { session } = account
+  const [accountOpen, setAccountOpen] = useState(false)
+  const [commentRevision, setCommentRevision] = useState(0)
+  const moreButton = useRef<HTMLButtonElement>(null)
+  const touchStart = useRef<{ x: number; y: number } | null>(null)
   const [query, setQuery] = useState('')
   const [queue, setQueue] = useState<Result[]>([])
   // Player state is separate from the feed: the feed list (queue) can be
@@ -319,11 +329,12 @@ export default function Page() {
     setLoading(true)
     setError('')
     try {
-      const response = await fetch(`${moreBase}&pageToken=${encodeURIComponent(nextPageToken)}`)
+      const response = await fetch(`${moreBase}${moreBase.includes('?') ? '&' : '?'}pageToken=${encodeURIComponent(nextPageToken)}`)
       const data = await response.json()
       if (request !== requestId.current) return
       if (!response.ok) throw new Error(data.error ?? 'Could not load more videos')
-      const updated = [...queueRef.current, ...(data.items ?? []).map(normalize)]
+      const known = new Set(queueRef.current.map(video => video.id))
+      const updated = [...queueRef.current, ...(data.items ?? []).map(normalize).filter((video: Result) => !known.has(video.id))]
       queueRef.current = updated
       setQueue(updated)
       setNextPageToken(data.nextPageToken ?? null)
@@ -334,6 +345,19 @@ export default function Page() {
       if (request === requestId.current) setLoading(false)
     }
   }
+
+  useEffect(() => {
+    const button = moreButton.current
+    if (!button || loading || !nextPageToken || error || !('IntersectionObserver' in window)) return
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) {
+        observer.disconnect()
+        void loadMore()
+      }
+    })
+    observer.observe(button)
+    return () => observer.disconnect()
+  }, [loading, nextPageToken, error, view, minimized, playerVideo])
 
   async function loadTrending(fresh = false): Promise<boolean> {
     if (playerVideo) minimizePlayer()
@@ -347,8 +371,8 @@ export default function Page() {
       if (request !== requestId.current) return false
       if (!response.ok) throw new Error(data.error ?? 'Could not load trending videos')
       syncQueue((data.items ?? []).map(normalize))
-      setNextPageToken(null)
-      setMoreBase(null)
+      setNextPageToken(data.nextPageToken ?? null)
+      setMoreBase('/api/youtube/trending')
       return true
     } catch (trendError) {
       if (request !== requestId.current) return false
@@ -520,7 +544,7 @@ export default function Page() {
   // recommendations — and leaves any playing video behind.
   function goHome() {
     setSidebarOpen(false)
-    void loadHomeFeed()
+    void loadHomeFeed(true)
   }
 
   function sendPlayerCommand(func: 'playVideo' | 'pauseVideo') {
@@ -574,8 +598,8 @@ export default function Page() {
       if (!response.ok) throw new Error(data.error ?? 'Could not load home feed')
       syncQueue((data.items ?? []).map(normalize))
       setHomeHead('Trending in India')
-      setNextPageToken(null)
-      setMoreBase(null)
+      setNextPageToken(data.nextPageToken ?? null)
+      setMoreBase('/api/youtube/trending')
       return true
     } catch (homeError) {
       if (request !== requestId.current) return false
@@ -639,7 +663,8 @@ export default function Page() {
     }
     let cancelled = false
     setCommentsFailed(false)
-    fetch(`/api/youtube/comments?videoId=${encodeURIComponent(playerVideo.id)}`)
+    setComments([])
+    fetch(`/api/youtube/comments?videoId=${encodeURIComponent(playerVideo.id)}${commentRevision ? "&fresh=1" : ""}`)
       .then((r) => r.json().then((d) => ({ ok: r.ok, data: d })))
       .then(({ ok, data }) => {
         if (cancelled) return
@@ -648,7 +673,7 @@ export default function Page() {
       })
       .catch(() => { if (!cancelled) setCommentsFailed(true) })
     return () => { cancelled = true }
-  }, [playerVideo])
+  }, [playerVideo, commentRevision])
 
   // Scroll to the player only when the full watch view opens, never when
   // it shrinks to the mini-player.
@@ -730,6 +755,8 @@ export default function Page() {
   function openView(next: View) {
     if (playerVideo) minimizePlayer()
     setError('')
+    ++requestId.current
+    setLoading(false)
     setView(next)
     setSidebarOpen(false)
     if (next !== 'channel') setChannelView(null)
@@ -768,6 +795,7 @@ export default function Page() {
 
   return (
     <div className={`yt-app ${compactRail ? 'compact-rail' : ''}`}>
+      {clientId && <Script src="https://accounts.google.com/gsi/client" strategy="afterInteractive" />}
       <header className="yt-topbar">
         <button className="yt-icon-btn" type="button" onClick={() => window.matchMedia('(max-width: 760px)').matches ? setSidebarOpen(open => !open) : setCompactRail(compact => !compact)} aria-label="Menu"><Menu size={22} /></button>
         <button className="yt-logo" type="button" onClick={goHome} aria-label="PlayTube home">
@@ -787,6 +815,22 @@ export default function Page() {
             title={listening ? 'Stop voice search' : voiceSupported ? 'Search by voice' : 'Voice search works in Chrome, Edge, and Safari'}
           ><Mic size={20} /></button>
         </div>
+        <div className="account-control">
+          <button className="account-button" aria-label={session ? 'Account menu' : 'Sign in'} aria-expanded={session ? accountOpen : undefined}
+            disabled={account.pending} onClick={() => {
+              if (session) setAccountOpen(v => !v)
+              else if (/; wv\)/.test(navigator.userAgent)) window.location.assign('/connect-in-browser')
+              else account.connect()
+            }}>
+            <CircleUserRound size={20} /><span>{account.pending ? 'Connecting…' : session ? session.channel?.snippet?.title || 'Account' : 'Sign in'}</span>
+          </button>
+          {session && accountOpen && <div className="account-menu">
+            <strong>{session.channel?.snippet?.title || 'YouTube account'}</strong>
+            <button onClick={() => { setAccountOpen(false); openView('uploads') }}>Your videos</button>
+            <a href="https://studio.youtube.com" target="_blank" rel="noreferrer">YouTube Studio ↗</a>
+            <button onClick={() => { account.signOut(); setAccountOpen(false); goHome() }}>Sign out</button>
+          </div>}
+        </div>
       </header>
 
       <div className="yt-body">
@@ -794,15 +838,43 @@ export default function Page() {
           <button className={view === 'home' ? 'active' : ''} type="button" onClick={goHome}><Home size={20} /><span>Home</span></button>
           <button className={view === 'trending' ? 'active' : ''} type="button" onClick={() => { setSidebarOpen(false); void loadTrending() }}><Flame size={20} /><span>Trending</span></button>
           <button className={view === 'subscriptions' ? 'active' : ''} type="button" onClick={() => openView('subscriptions')}><Users size={20} /><span>Subscriptions</span></button>
+          <a className="yt-external-nav" href="https://www.youtube.com/shorts/" target="_blank" rel="noreferrer"><Play size={20} /><span>Shorts ↗</span></a>
+          <a className="yt-external-nav" href="https://www.youtube.com/live" target="_blank" rel="noreferrer"><Video size={20} /><span>Live ↗</span></a>
           <h2 className="yt-nav-label">Your library</h2>
           <button className={view === 'history' ? 'active' : ''} type="button" onClick={() => openView('history')}><History size={20} /><span>History</span></button>
           <button className={view === 'watchlater' ? 'active' : ''} type="button" onClick={() => openView('watchlater')}><Clock size={20} /><span>Watch Later</span></button>
           <button className={view === 'liked' ? 'active' : ''} type="button" onClick={() => openView('liked')}><ThumbsUp size={20} /><span>Liked videos</span></button>
-          <p className="yt-side-note">History, liked videos, Watch Later and subscriptions stay on this device.</p>
+          {session && <>
+            <button className={view === 'playlists' ? 'active' : ''} onClick={() => openView('playlists')}><ListMusic size={20} /><span>Playlists</span></button>
+            <button className={view === 'uploads' ? 'active' : ''} onClick={() => openView('uploads')}><Video size={20} /><span>Your videos</span></button>
+          </>}
+          <p className="yt-side-note">{session ? 'History and Watch Later stay on this device.' : 'Guest library · Saved on this device'}</p>
         </aside>
         {sidebarOpen && <button className="yt-scrim" type="button" aria-label="Close menu" onClick={() => setSidebarOpen(false)} />}
 
-        <main className="yt-main">
+        <main className="yt-main" onTouchStart={event => {
+          touchStart.current = window.scrollY <= 0 && view === 'home' && (!playerVideo || minimized) && !loading && event.touches.length === 1
+            ? { x: event.touches[0].clientX, y: event.touches[0].clientY } : null
+        }} onTouchCancel={() => { touchStart.current = null }} onTouchEnd={event => {
+          const start = touchStart.current
+          touchStart.current = null
+          const end = event.changedTouches[0]
+          if (start && end && end.clientY - start.y > 85 && Math.abs(end.clientX - start.x) < 45) {
+            if (feedQuery) void runSearch(feedQuery, true)
+            else void loadHomeFeed(true)
+          }
+        }}>
+          {account.notice && <p className="account-notice" role="status">{account.notice} <button aria-label="Dismiss account message" onClick={() => account.setNotice('')}><X size={16} /></button></p>}
+          {loading && queue.length > 0 && <div role="status" className="feed-progress" aria-label="Updating feed" />}
+          {!session && (view === 'uploads' || view === 'playlists') && <p>Sign in to view your YouTube library.</p>}
+          {session && (view === 'liked' || view === 'subscriptions' || view === 'playlists' || view === 'uploads') &&
+            <YouTubeLibrary key={view + (session.channel?.id || '')} session={session} collection={view} authorize={() => account.connect(true)}
+              onChannel={(id, name) => openChannel({ id, name })} onPlay={(items, index) => {
+                const videos = items.map(item => normalize({ id: item.contentDetails?.videoId || item.snippet?.resourceId?.videoId || item.id,
+                  title: item.snippet?.title, channel: item.snippet?.videoOwnerChannelTitle || item.snippet?.channelTitle,
+                  channelId: item.snippet?.videoOwnerChannelId || item.snippet?.channelId, thumbnail: item.snippet?.thumbnails?.medium?.url }))
+                playVideo(videos[index], videos)
+              }} />}
           {view === 'home' && (!playerVideo || minimized) && (
             <nav className="yt-chips" aria-label="Categories">
               {CHIPS.map((chip) => (
@@ -838,12 +910,12 @@ export default function Page() {
                       : <strong>{playerVideo.channel}</strong>}
                     <small>{[channelDetails?.subs ? `${formatCompact(channelDetails.subs)} subscribers` : '', formatViews(playerVideo.viewCount), formatDate(playerVideo.publishedAt)].filter(Boolean).join(' • ')}</small>
                   </span>
-                  <button
+                  {session ? (selectedChannel?.id && <YouTubeToggle key={selectedChannel?.id} session={session} authorize={() => account.connect(true)} channelId={selectedChannel?.id} />) : <button
                     className={`yt-subscribe ${isSubscribed ? 'subscribed' : ''}`}
                     type="button"
                     onClick={() => toggleSubscribe(selectedChannel)}
                     disabled={!selectedChannel}
-                  ><Bell size={16} /> {isSubscribed ? 'Subscribed' : 'Subscribe'}</button>
+                  ><Bell size={16} /> {isSubscribed ? 'Subscribed' : 'Subscribe'}</button>}
                 </div>
                 {playerVideo.description && (
                   <div className="yt-desc">
@@ -858,7 +930,8 @@ export default function Page() {
                     <button type="button" onClick={playNext} disabled={!canNext} aria-label="Next video"><SkipForward size={24} fill="currentColor" /></button>
                   </div>
                   <button className="yt-pill theater-toggle" type="button" aria-pressed={theater} onClick={() => setTheater(value => !value)}><Monitor size={17} /> Theater mode</button>
-                  <button className={`yt-pill ${isLiked ? 'active' : ''}`} type="button" onClick={toggleLike}><ThumbsUp size={17} /> {playerVideo.likeCount ? `${formatCompact(playerVideo.likeCount)} ` : ''}{isLiked ? 'Liked' : 'Like'}</button>
+                  {session ? <><YouTubeToggle key={playerVideo.id} videoId={playerVideo.id} session={session} authorize={() => account.connect(true)} />
+                    <PlaylistSave key={'save' + playerVideo.id} videoId={playerVideo.id} session={session} authorize={() => account.connect(true)} /></> : <button className={`yt-pill ${isLiked ? 'active' : ''}`} type="button" onClick={toggleLike}><ThumbsUp size={17} /> {playerVideo.likeCount ? `${formatCompact(playerVideo.likeCount)} ` : ''}{isLiked ? 'Liked' : 'Like'}</button>}
                   <button className={`yt-pill ${isSavedLater ? 'active' : ''}`} type="button" onClick={toggleWatchLater}><Bookmark size={17} /> {isSavedLater ? 'Saved' : 'Watch Later'}</button>
                   <button className="yt-pill" type="button" onClick={shareVideo}><Share2 size={17} /> Share</button>
                   {shareNote && <span className="yt-share-note">{shareNote}</span>}
@@ -870,6 +943,7 @@ export default function Page() {
                 </div>
                 <section className="yt-comments" aria-label="Comments">
                   <h2><MessageSquare size={18} /> {playerVideo.commentCount ? `${Number(playerVideo.commentCount).toLocaleString('en-US')} Comments` : 'Comments'}</h2>
+                  {session && <CommentForm channelId={playerVideo.channelId} key={playerVideo.id} session={session} videoId={playerVideo.id} authorize={() => account.connect(true)} onPosted={() => setCommentRevision(v => v + 1)} />}
                   {commentsFailed && <p className="yt-empty-note">Comments are turned off for this video or could not be loaded.</p>}
                   {!commentsFailed && comments.length === 0 && <p className="yt-empty-note">No comments yet.</p>}
                   {comments.map((comment) => (
@@ -924,7 +998,7 @@ export default function Page() {
                 <div className="yt-section-head"><h2>{homeHead}</h2></div>
               )}
               <div className="yt-grid">{(featured ? queue.slice(1) : queue).map((video) => videoCard(video, queue, !!feedQuery))}</div>
-              {nextPageToken && <button className="yt-load-more" type="button" onClick={loadMore} disabled={loading}>{loading ? <><LoaderCircle size={16} className="spin" /> Loading more</> : 'Load more videos'}</button>}
+              {nextPageToken && <button ref={moreButton} className="yt-load-more" type="button" onClick={loadMore} disabled={loading}>{loading ? <><LoaderCircle size={16} className="spin" /> Loading more</> : 'Load more videos'}</button>}
             </section>
           )}
 
@@ -933,6 +1007,7 @@ export default function Page() {
               <div className="yt-page-head"><h1><Flame size={22} /> Trending in India</h1></div>
               {loading && queue.length === 0 && <p className="yt-loading"><LoaderCircle size={20} className="spin" /> Loading trending…</p>}
               <div className="yt-grid">{queue.map((video) => videoCard(video, queue))}</div>
+              {nextPageToken && <button ref={moreButton} className="yt-load-more" type="button" onClick={loadMore} disabled={loading}>Load more videos</button>}
             </section>
           )}
 
@@ -947,20 +1022,20 @@ export default function Page() {
                   <h1>{channelView.name}</h1>
                   <p className="yt-channel-stats">{[channelView.handle, channelView.subs ? `${formatCompact(channelView.subs)} subscribers` : '', channelView.videos ? `${formatCompact(channelView.videos)} videos` : ''].filter(Boolean).join(' • ')}</p>
                   {channelView.description && <p className="yt-channel-desc">{channelView.description.slice(0, 200)}{channelView.description.length > 200 ? '…' : ''}</p>}
-                  <button
+                  {session ? (channelView.id && <YouTubeToggle key={channelView.id} session={session} authorize={() => account.connect(true)} channelId={channelView.id} />) : <button
                     className={`yt-subscribe ${subscriptions.some((c) => c.id === channelView.id) ? 'subscribed' : ''}`}
                     type="button"
                     onClick={() => toggleSubscribe(channelView)}
-                  ><Bell size={16} /> {subscriptions.some((c) => c.id === channelView.id) ? 'Subscribed' : 'Subscribe'}</button>
+                  ><Bell size={16} /> {subscriptions.some((c) => c.id === channelView.id) ? 'Subscribed' : 'Subscribe'}</button>}
                 </div>
               </div>
               {loading && queue.length === 0 && <p className="yt-loading"><LoaderCircle size={20} className="spin" /> Loading channel videos…</p>}
               <div className="yt-grid">{queue.map((video) => videoCard(video, queue))}</div>
-              {nextPageToken && <button className="yt-load-more" type="button" onClick={loadMore} disabled={loading}>{loading ? <><LoaderCircle size={16} className="spin" /> Loading more</> : 'Load more videos'}</button>}
+              {nextPageToken && <button ref={moreButton} className="yt-load-more" type="button" onClick={loadMore} disabled={loading}>{loading ? <><LoaderCircle size={16} className="spin" /> Loading more</> : 'Load more videos'}</button>}
             </section>
           )}
 
-          {view === 'subscriptions' && (
+          {!session && view === 'subscriptions' && (
             <section aria-label="Subscriptions">
               <div className="yt-page-head"><h1><Users size={22} /> Subscriptions</h1></div>
               {subscriptions.length === 0 && <div className="yt-empty"><Users size={30} /><h2>No subscriptions yet</h2><p>Tap Subscribe on any channel to see it here.</p></div>}
@@ -1006,7 +1081,7 @@ export default function Page() {
             </section>
           )}
 
-          {view === 'liked' && (
+          {!session && view === 'liked' && (
             <section aria-label="Liked videos">
               <div className="yt-page-head"><h1><ThumbsUp size={22} /> Liked videos</h1></div>
               {liked.length === 0 && <div className="yt-empty"><ThumbsUp size={30} /><h2>No liked videos yet</h2><p>Tap Like under a playing video to save it here.</p></div>}
