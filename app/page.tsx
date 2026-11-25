@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   Bell, Bookmark, ChevronLeft, ChevronUp, Clock, Flame, History, Home, LoaderCircle,
-  Menu, MessageSquare, Mic, Music2, Pause, Play, RotateCw, Search, Share2, SkipBack, SkipForward,
+  Menu, MessageSquare, Mic, Music2, Pause, Play, Search, Share2, SkipBack, SkipForward,
   ThumbsUp, Trash2, Users, X, Monitor, Check,
 } from 'lucide-react'
 
@@ -102,8 +102,6 @@ export default function Page() {
   const [moreBase, setMoreBase] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [refreshNote, setRefreshNote] = useState('')
-  const refreshNoteTimer = useRef<number | null>(null)
   const [playing, setPlaying] = useState(false)
   const [listening, setListening] = useState(false)
   const [voiceSupported, setVoiceSupported] = useState(true)
@@ -525,34 +523,6 @@ export default function Page() {
     void loadHomeFeed()
   }
 
-  function showRefreshNote() {
-    setRefreshNote('Refreshed just now')
-    if (refreshNoteTimer.current) window.clearTimeout(refreshNoteTimer.current)
-    refreshNoteTimer.current = window.setTimeout(() => setRefreshNote(''), 2500)
-  }
-
-  // Refresh button: reloads whatever the user is looking at right now —
-  // the home feed, the current search, Trending, the open channel page,
-  // or the on-device lists — without stopping a song in the mini-player.
-  // It fetches fresh data from YouTube (bypassing the server cache) and
-  // shows a confirmation, so a tap always visibly does something.
-  async function refreshCurrent() {
-    if (loading) return
-    let ok = false
-    if (view === 'trending') ok = await loadTrending(true)
-    else if (view === 'channel' && channelView) ok = await openChannel(channelView, true)
-    else if (view === 'home') {
-      ok = query.trim() !== '' ? await runSearch(query, true) : await loadHomeFeed(true)
-    } else {
-      setHistory(loadStored<Result>(HISTORY_KEY))
-      setLiked(loadStored<Result>(LIKED_KEY))
-      setWatchLater(loadStored<Result>(WATCH_LATER_KEY))
-      setSubscriptions(loadStored<Channel>(SUBS_KEY))
-      ok = true
-    }
-    if (ok) showRefreshNote()
-  }
-
   function sendPlayerCommand(func: 'playVideo' | 'pauseVideo') {
     const player = videoRef.current?.contentWindow
     if (!player) return
@@ -817,14 +787,6 @@ export default function Page() {
             title={listening ? 'Stop voice search' : voiceSupported ? 'Search by voice' : 'Voice search works in Chrome, Edge, and Safari'}
           ><Mic size={20} /></button>
         </div>
-        <button
-          className="yt-icon-btn yt-refresh"
-          type="button"
-          onClick={refreshCurrent}
-          disabled={loading}
-          aria-label="Refresh"
-          title="Refresh"
-        >{loading ? <LoaderCircle size={20} className="spin" /> : <RotateCw size={20} />}</button>
       </header>
 
       <div className="yt-body">
@@ -841,7 +803,6 @@ export default function Page() {
         {sidebarOpen && <button className="yt-scrim" type="button" aria-label="Close menu" onClick={() => setSidebarOpen(false)} />}
 
         <main className="yt-main">
-          {refreshNote && <p className="yt-refresh-note">{refreshNote}</p>}
           {view === 'home' && (!playerVideo || minimized) && (
             <nav className="yt-chips" aria-label="Categories">
               {CHIPS.map((chip) => (
