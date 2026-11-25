@@ -878,10 +878,6 @@ export default function Page() {
             title={listening ? 'Stop voice search' : voiceSupported ? 'Search by voice' : 'Voice search works in Chrome, Edge, and Safari'}
           ><Mic size={20} /></button>
         </div>
-        {remoteFeed && <button type="button" className="yt-icon-btn feed-refresh-button"
-          aria-label="Refresh videos" title="Refresh videos" onClick={refreshFeed} disabled={loading}>
-          <RotateCw size={20} className={loading ? 'spin' : undefined} />
-        </button>}
       </header>
 
       {browsing && <nav className="mobile-dock" aria-label="Bottom navigation">
