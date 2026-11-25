@@ -5,7 +5,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <application android:theme="@style/AppTheme" android:label="PlayTube" android:usesCleartextTraffic="false" android:resizeableActivity="true" android:hardwareAccelerated="true">
+    <application android:theme="@style/AppTheme" android:label="PlayTube" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:usesCleartextTraffic="false" android:resizeableActivity="true" android:hardwareAccelerated="true">
         <service android:name=".LocalMusicService" android:exported="false"
             android:foregroundServiceType="mediaPlayback" android:stopWithTask="false" />
         <activity android:name=".LocalMusicActivity" android:exported="false" />
