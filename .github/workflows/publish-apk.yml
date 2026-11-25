@@ -1,0 +1,24 @@
+name: Publish PlayTube APK
+on:
+  push:
+    branches: [main]
+    paths: ['android/releases/PlayTube-*.apk']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish signed Android package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          apk=$(find android/releases -name 'PlayTube-*.apk' | sort -V | tail -1)
+          version=$(basename "$apk" .apk)
+          tag="v${version#PlayTube-}"
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" "$apk" --target "$GITHUB_SHA" --title "PlayTube ${tag#v}" --notes "Signed Android APK. Requires Android 7.0 or newer."
+          fi
