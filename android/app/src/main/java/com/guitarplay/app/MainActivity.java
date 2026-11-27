@@ -4,7 +4,9 @@ import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.PictureInPictureParams;
+import android.content.ActivityNotFoundException;
 import android.content.Intent;
+import android.widget.Toast;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
@@ -76,6 +78,27 @@ public final class MainActivity extends Activity {
                     view.evaluateJavascript("document.querySelector('.yt-player iframe')?.contentWindow.postMessage(JSON.stringify({event:'command',func:'pauseVideo',args:[]}),'https://www.youtube.com')", null);
                     setPlaying(false);
                     startActivity(new Intent(MainActivity.this, LocalMusicActivity.class));
+                    return true;
+                }
+                Uri link = request.getUrl();
+                if (request.isForMainFrame() && request.hasGesture() && isDashboard(view.getUrl())
+                        && "https".equals(link.getScheme()) && "www.youtube.com".equals(link.getEncodedAuthority())
+                        && "/watch".equals(link.getPath())) {
+                    String video = link.getQueryParameter("v");
+                    if (video == null || !video.matches("[A-Za-z0-9_-]{11}")) return false;
+                    Uri.Builder destination = Uri.parse("https://www.youtube.com/watch").buildUpon().appendQueryParameter("v", video);
+                    String time = link.getQueryParameter("t");
+                    if (time != null && time.matches("[0-9]{1,10}s")) destination.appendQueryParameter("t", time);
+                    Intent open = new Intent(Intent.ACTION_VIEW, destination.build()).addCategory(Intent.CATEGORY_BROWSABLE);
+                    setPlaying(false);
+                    try {
+                        startActivity(open.setPackage("com.google.android.youtube"));
+                    } catch (ActivityNotFoundException missingYouTube) {
+                        try { startActivity(open.setPackage(null)); }
+                        catch (ActivityNotFoundException missingBrowser) {
+                            Toast.makeText(MainActivity.this, "Install YouTube or a web browser to open this video.", Toast.LENGTH_LONG).show();
+                        }
+                    }
                     return true;
                 }
                 return false;

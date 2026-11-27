@@ -173,6 +173,7 @@ export default function Page() {
     onend: (() => void) | null; onerror: ((event: { error?: string }) => void) | null
     onstart?: (() => void) | null; onnomatch?: (() => void) | null
   } | null>(null)
+  const playbackSeconds = useRef(0)
   const videoRef = useRef<HTMLIFrameElement>(null)
   const watchRef = useRef<HTMLElement>(null)
   const queueRef = useRef<Result[]>([])
@@ -214,7 +215,10 @@ export default function Page() {
     if (!video) return
     playerIndexRef.current = index
     setPlayerIndex(index)
-    if (playerVideoRef.current?.id !== video.id) setPlaying(false)
+    if (playerVideoRef.current?.id !== video.id) {
+      playbackSeconds.current = 0
+      setPlaying(false)
+    }
     if (!minimizedRef.current) setView('home')
     setDescExpanded(false)
     rememberPlayed(video)
@@ -259,6 +263,7 @@ export default function Page() {
   }
 
   function closePlayer() {
+    playbackSeconds.current = 0
     playerQueueRef.current = []
     playerIndexRef.current = -1
     setPlayerQueue([])
@@ -775,8 +780,13 @@ export default function Page() {
   useEffect(() => {
     const handleYouTubeMessage = (event: MessageEvent) => {
       if (event.origin !== 'https://www.youtube.com' || event.source !== videoRef.current?.contentWindow) return
-      let message: { event?: string; info?: number }
+      let message: { event?: string; info?: number | { currentTime?: number } }
       try { message = typeof event.data === 'string' ? JSON.parse(event.data) : event.data } catch { return }
+      if (message?.event === 'infoDelivery' && typeof message.info === 'object') {
+        const seconds = message.info?.currentTime
+        if (typeof seconds === 'number' && Number.isFinite(seconds)) playbackSeconds.current = Math.max(0, Math.floor(seconds))
+        return
+      }
       if (message?.event === 'onError') setPlaying(false)
       if (message?.event !== 'onStateChange') return
       if (message.info !== 3) setPlaying(message.info === 1)
@@ -923,6 +933,7 @@ export default function Page() {
                 <div className="yt-watch-back"><button type="button" onClick={exitWatch}><ChevronLeft size={18} /> Back to browsing</button></div>
                 <div className="yt-player">
                   <iframe
+                    key={playerVideo.id}
                     ref={videoRef}
                     onLoad={startVideoPlayback}
                     src={`https://www.youtube.com/embed/${playerVideo.id}?enablejsapi=1&autoplay=1&origin=${typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : ''}&rel=0`}
@@ -963,6 +974,13 @@ export default function Page() {
                   <button className="yt-pill theater-toggle" type="button" aria-pressed={theater} onClick={() => setTheater(value => !value)}><Monitor size={17} /> Theater mode</button>
                   <button className={`yt-pill ${isLiked ? 'active' : ''}`} type="button" onClick={toggleLike}><ThumbsUp size={17} /> {playerVideo.likeCount ? `${formatCompact(playerVideo.likeCount)} ` : ''}{isLiked ? 'Liked' : 'Like'}</button>
                   <button className={`yt-pill ${isSavedLater ? 'active' : ''}`} type="button" onClick={toggleWatchLater}><Bookmark size={17} /> {isSavedLater ? 'Saved' : 'Watch Later'}</button>
+                  <a className="yt-pill" href={`https://www.youtube.com/watch?v=${encodeURIComponent(playerVideo.id)}`}
+                    onClick={event => {
+                      const url = new URL(event.currentTarget.href)
+                      url.searchParams.set('t', String(playbackSeconds.current) + 's')
+                      event.currentTarget.href = url.href
+                      sendPlayerCommand('pauseVideo')
+                    }}>Continue in YouTube</a>
                   <button className="yt-pill" type="button" onClick={shareVideo}><Share2 size={17} /> Share</button>
                   {shareNote && <span className="yt-share-note">{shareNote}</span>}
                 </div>
