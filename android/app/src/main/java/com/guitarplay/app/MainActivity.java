@@ -65,7 +65,7 @@ public final class MainActivity extends Activity {
         // old dashboard after site updates.
         webView.clearCache(true);
         webView.getSettings().setCacheMode(WebSettings.LOAD_NO_CACHE);
-        webView.getSettings().setUserAgentString(webView.getSettings().getUserAgentString() + " PlayTubeLocalMusic/1");
+        webView.getSettings().setUserAgentString(webView.getSettings().getUserAgentString() + " PlayTubeLocalMusic/1 PlayTubeLocalVideo/1");
         // Mic: an app WebView does not reliably provide web speech recognition,
         // so the site's mic button uses this native bridge (window.PlayTubeMic),
         // which runs Android's own speech recognizer and returns the transcript

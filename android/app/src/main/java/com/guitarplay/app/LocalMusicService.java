@@ -7,16 +7,31 @@ import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
 import android.net.Uri;
 import android.os.*;
+import android.view.SurfaceHolder;
 
 public final class LocalMusicService extends Service {
     static final String PLAY = "play", PAUSE = "pause", STOP = "stop";
     private static final String CHANNEL = "local_audio";
     private static final int NOTIFICATION = 42;
     private MediaPlayer player;
+    private SurfaceHolder display;
+    private boolean videoTrack;
+    int videoWidth, videoHeight;
+
+    void attachDisplay(SurfaceHolder holder) {
+        display = holder;
+        if (player != null) player.setDisplay(holder);
+    }
+
+    void detachDisplay(SurfaceHolder holder) {
+        if (holder == display) attachDisplay(null);
+    }
+
+    boolean hasVideo() { return videoTrack || (videoWidth > 0 && videoHeight > 0); }
     private MediaSession session;
     private AudioManager audio;
     private boolean prepared, resumeOnGain, foreground;
-    private String title = "", status = "Choose an audio file.";
+    private String title = "", status = "Choose an audio or video file.";
     private int state = PlaybackState.STATE_STOPPED;
     Runnable changed;
     final class MusicBinder extends Binder { LocalMusicService service() { return LocalMusicService.this; } }
@@ -40,7 +55,7 @@ public final class LocalMusicService extends Service {
         audio = (AudioManager) getSystemService(AUDIO_SERVICE);
         if (Build.VERSION.SDK_INT >= 26) {
             getSystemService(NotificationManager.class).createNotificationChannel(
-                new NotificationChannel(CHANNEL, "Local music", NotificationManager.IMPORTANCE_LOW));
+                new NotificationChannel(CHANNEL, "Local music & videos", NotificationManager.IMPORTANCE_LOW));
         }
         session = new MediaSession(this, "PlayTube local music");
         session.setCallback(new MediaSession.Callback() {
@@ -62,7 +77,7 @@ public final class LocalMusicService extends Service {
             Uri uri = intent.getData();
             if (uri != null && "content".equals(uri.getScheme())) open(uri, intent.getStringExtra("title"));
             else if (prepared) requestPlay();
-            else finishTrack("Choose an audio file.");
+            else finishTrack("Choose an audio or video file.");
         } else if (PAUSE.equals(action)) pause();
         else if (STOP.equals(action)) finishTrack("Stopped");
         return START_NOT_STICKY;
@@ -70,7 +85,7 @@ public final class LocalMusicService extends Service {
 
     private void open(Uri uri, String name) {
         releasePlayer();
-        title = name == null ? "Local audio" : name;
+        title = name == null ? "Local media" : name;
         state = PlaybackState.STATE_BUFFERING;
         status = "Loading…";
         session.setActive(true);
@@ -82,16 +97,26 @@ public final class LocalMusicService extends Service {
             player.setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
                 .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build());
             player.setWakeMode(this, PowerManager.PARTIAL_WAKE_LOCK);
+            if (display != null && display.getSurface().isValid()) player.setDisplay(display);
+            player.setOnVideoSizeChangedListener((mp, width, height) -> {
+                if (mp != player) return;
+                videoWidth = width;
+                videoHeight = height;
+                if (changed != null) changed.run();
+            });
             player.setOnPreparedListener(mp -> {
                 if (player != mp) return;
                 prepared = true;
+                for (MediaPlayer.TrackInfo info : mp.getTrackInfo()) {
+                    if (info.getTrackType() == MediaPlayer.TrackInfo.MEDIA_TRACK_TYPE_VIDEO) videoTrack = true;
+                }
                 session.setMetadata(new MediaMetadata.Builder().putString(MediaMetadata.METADATA_KEY_TITLE, title)
                     .putLong(MediaMetadata.METADATA_KEY_DURATION, mp.getDuration()).build());
                 requestPlay();
             });
             player.setOnCompletionListener(mp -> { if (mp == player) finishTrack("Finished"); });
             player.setOnErrorListener((mp, what, extra) -> {
-                if (mp == player) finishTrack("This file could not be played. Choose another audio file.");
+                if (mp == player) finishTrack("This file could not be played. Choose another media file.");
                 return true;
             });
             player.setDataSource(this, uri);
@@ -135,6 +160,8 @@ public final class LocalMusicService extends Service {
     }
     private void releasePlayer() {
         prepared = false;
+        videoTrack = false;
+        videoWidth = videoHeight = 0;
         resumeOnGain = false;
         if (player != null) { player.release(); player = null; }
         audio.abandonAudioFocus(focus);
