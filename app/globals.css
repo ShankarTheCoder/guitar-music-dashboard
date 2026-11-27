@@ -381,10 +381,11 @@ html.android-pip .yt-watch .yt-upnext { display: none; }
    had the refresh button right at the edge; and the phone renders the logo
    text a little wider than desktop Chromium, so the margin has to be generous.) */
 @media (max-width: 760px) {
-  .yt-topbar { padding-inline: 8px; gap: 2px; overflow: hidden; }
-  .yt-topbar .yt-icon-btn { width: 36px; height: 36px; flex-shrink: 0; }
-  .yt-logo { font-size: 16px; gap: 4px; min-width: 0; overflow: hidden; }
-  .yt-logo > span { width: 26px; height: 26px; flex-shrink: 0; }
+  .yt-topbar { padding-inline: 8px; gap: 2px; overflow: hidden; height: calc(60px + max(env(safe-area-inset-top), 28px)); padding-top: max(env(safe-area-inset-top), 28px); }
+  .yt-topbar .yt-icon-btn { width: 34px; height: 34px; flex-shrink: 0; }
+  .yt-logo { font-size: 15px; gap: 4px; min-width: 0; overflow: hidden; }
+  .yt-logo > span { width: 24px; height: 24px; flex-shrink: 0; }
   .yt-logo strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .yt-search-wrap { gap: 2px; }
+  .yt-chips-wrap { top: calc(60px + max(env(safe-area-inset-top), 28px)); }
 }
