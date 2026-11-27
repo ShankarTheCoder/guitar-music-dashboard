@@ -93,7 +93,7 @@ html, body { overflow-x: clip; }
 .yt-side-note { color: #717171; font-size: 11px; line-height: 1.5; padding: 14px 12px; }
 .yt-scrim { display: none; }
 .yt-main { flex: 1; min-width: 0; padding: 16px 20px 40px; }
-.yt-chips { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 14px; scrollbar-width: none; -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent 100%); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent 100%); }
+.yt-chips { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 14px; scrollbar-width: none; }
 .yt-chips::-webkit-scrollbar { display: none; }
 .yt-chips button { flex: 0 0 auto; border: 0; border-radius: 8px; background: #272727; color: #f1f1f1; font: inherit; font-size: 13px; font-weight: 600; padding: 8px 13px; cursor: pointer; }
 .yt-chips button.active { background: #f1f1f1; color: #0f0f0f; }
@@ -253,7 +253,9 @@ html, body { overflow-x: clip; }
 .yt-sidebar button.active { background: #303030; }
 .yt-nav-label { margin: 14px 0 4px; border-top: 1px solid #323232; padding: 18px 12px 4px; font-size: 15px; font-weight: 650; }
 .yt-main { max-width: 1760px; margin-inline: auto; padding-inline: clamp(16px, 2.6vw, 44px); }
-.yt-chips { position: sticky; top: 60px; z-index: 8; background: #0f0f0f; padding: 10px 0 14px; margin-top: -8px; }
+.yt-chips-wrap { position: sticky; top: 60px; z-index: 8; background: #0f0f0f; }
+.yt-chips-wrap::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 36px; background: linear-gradient(to left, #0f0f0f 0%, rgba(15,15,15,0) 100%); pointer-events: none; z-index: 1; }
+.yt-chips { padding: 10px 0 14px; margin-top: -8px; }
 .yt-feature { isolation: isolate; overflow: hidden; position: relative; display: flex; align-items: end; width: 100%; min-height: clamp(220px, 24vw, 360px); margin: 4px 0 26px; border-radius: 18px; text-align: left; background: #272020; color: white; }
 .yt-feature > img { position: absolute; z-index: -2; inset: 0 0 0 auto; width: 72%; height: 100%; object-fit: cover; }
 .yt-feature::after { content: ''; position: absolute; z-index: -1; inset: 0; background: linear-gradient(85deg, #171010 12%, rgba(23,16,16,.94) 31%, rgba(23,16,16,.18) 84%); }
@@ -351,15 +353,15 @@ html, body { overflow-x: clip; }
   .mobile-search-open .mobile-search-back { display: grid; }
   .mobile-search-open .yt-search-wrap { flex: 1; }
   .mobile-search-open .yt-search { display: flex; }
-  .yt-main { padding-bottom: 80px; }
+  .yt-main { padding-bottom: 96px; }
   .yt-grid { grid-template-columns: 1fr; margin-inline: -12px; gap: 24px; }
   .yt-card-row { padding-inline: 12px; }
   .yt-thumb { border-radius: 0; }
-  .mobile-dock { position: fixed; inset: auto 0 0; z-index: 22; height: calc(56px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(4,1fr); background: #0f0f0f; border-top: 1px solid #303030; padding-bottom: env(safe-area-inset-bottom); }
+  .mobile-dock { position: fixed; inset: auto 0 0; z-index: 22; height: calc(56px + max(env(safe-area-inset-bottom), 24px)); display: grid; grid-template-columns: repeat(4,1fr); background: #0f0f0f; border-top: 1px solid #303030; padding-bottom: max(env(safe-area-inset-bottom), 24px); }
   .mobile-dock button { display: grid; justify-items: center; align-content: center; gap: 3px; font-size: 10px; color: #bdbdbd; }
   .mobile-dock button[aria-current="page"] { color: white; font-weight: 700; }
   .mobile-dock button[aria-current="page"] svg { stroke-width: 2.7; }
-  .yt-watch-min { bottom: calc(66px + env(safe-area-inset-bottom)); right: 10px; width: min(68vw, 320px); }
+  .yt-watch-min { bottom: calc(66px + max(env(safe-area-inset-bottom), 24px)); right: 10px; width: min(68vw, 320px); }
   .yt-watch-min .yt-watch-title { font-size: 12px; }
 }
 
@@ -379,9 +381,10 @@ html.android-pip .yt-watch .yt-upnext { display: none; }
    had the refresh button right at the edge; and the phone renders the logo
    text a little wider than desktop Chromium, so the margin has to be generous.) */
 @media (max-width: 760px) {
-  .yt-topbar { padding-inline: 8px; gap: 2px; }
-  .yt-topbar .yt-icon-btn { width: 36px; height: 36px; }
-  .yt-logo { font-size: 16px; gap: 4px; }
-  .yt-logo > span { width: 26px; height: 26px; }
+  .yt-topbar { padding-inline: 8px; gap: 2px; overflow: hidden; }
+  .yt-topbar .yt-icon-btn { width: 36px; height: 36px; flex-shrink: 0; }
+  .yt-logo { font-size: 16px; gap: 4px; min-width: 0; overflow: hidden; }
+  .yt-logo > span { width: 26px; height: 26px; flex-shrink: 0; }
+  .yt-logo strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .yt-search-wrap { gap: 2px; }
 }

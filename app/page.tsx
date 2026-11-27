@@ -920,11 +920,13 @@ export default function Page() {
           {remoteFeed && pull.hint && <div role="status" className="pull-feedback">{pull.hint}</div>}
           {loading && queue.length > 0 && <div role="status" className="feed-progress" aria-label="Updating feed" />}
           {view === 'home' && (!playerVideo || minimized) && (
-            <nav className="yt-chips" aria-label="Categories">
-              {CHIPS.map((chip) => (
-                <button key={chip} type="button" className={feedQuery === chip || (chip === 'All' && !feedQuery) ? 'active' : ''} onClick={() => chipSearch(chip)}>{chip}</button>
-              ))}
-            </nav>
+            <div className="yt-chips-wrap">
+              <nav className="yt-chips" aria-label="Categories">
+                {CHIPS.map((chip) => (
+                  <button key={chip} type="button" className={feedQuery === chip || (chip === 'All' && !feedQuery) ? 'active' : ''} onClick={() => chipSearch(chip)}>{chip}</button>
+                ))}
+              </nav>
+            </div>
           )}
 
           {remoteFeed && feedNotice && <p role="status" className="yt-empty-note">{feedNotice}</p>}
